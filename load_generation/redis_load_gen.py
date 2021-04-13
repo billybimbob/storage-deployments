@@ -20,7 +20,7 @@ def add_read_operations(file:TextIOWrapper):
     if len(keys) != 0:
         file.write(f"GET {random.choice(keys)}\n")
     else: 
-        raise "ERROR: No keys to GET"
+        raise RuntimeError("ERROR: No keys to GET")
 
 def add_meta_operations(file:TextIOWrapper):
     file.write(f'SET myhash {hash} "{generate_random_string(10)}"')

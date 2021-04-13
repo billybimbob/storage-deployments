@@ -19,7 +19,7 @@ def add_read_operations(file):
     if len(keys) != 0:
         file.write(f"READ {random.choice(keys)}\n")
     else: 
-        raise "ERROR: No keys to READ"
+        raise RuntimeError("ERROR: No keys to READ")
 
 def add_meta_operations(file): 
     file.write(f"CREATECOLLECTION {random.choice(keys)}\n")
