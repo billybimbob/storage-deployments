@@ -1,4 +1,6 @@
 {
+    "logpath": "/var/log/mongodb.log",
+
     "mongos": {
         "port": 27017,
         "host": "<hostname>"
