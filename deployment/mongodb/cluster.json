@@ -1,0 +1,22 @@
+{
+    "mongos": {
+        "port": 27017,
+        "host": "<hostname>"
+    },
+
+    "configs": {
+        "set_name": "configSet",
+        "port": 27019,
+        "members": [
+            "<hostname>"
+        ]
+    },
+
+    "shards": {
+        "set_name": "shardSet",
+        "port": 27018,
+        "members": [
+            "<hostname>"
+        ]
+    }
+}

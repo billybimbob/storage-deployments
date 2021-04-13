@@ -6,6 +6,8 @@ from typing import Optional
 from argparse import ArgumentParser
 from pathlib import Path
 
+from redis.client import Redis
+
 
 async def main(
     redis: str,
@@ -18,7 +20,7 @@ async def main(
     redis_server = [str(redis_server), conf]
 
     if not sentinel and master and master_port:
-        redis_server.extend(['--slaveof', master, master_port])
+        redis_server.extend(['--slaveof', master, str(master_port)])
 
     if sentinel and master and master_port:
         redis_server.append('--sentinel')
@@ -27,14 +29,10 @@ async def main(
     await asyncio.create_subprocess_exec(*redis_server)
 
     if sentinel and master and master_port:
-        sentinel_monitor = Path(redis).with_name('redis-cli')
+        cli = Redis()
 
         # mymaster should be the same as in the conf files
-        sentinel_monitor = [
-            str(sentinel_monitor),
-            'SENTINAL', 'MONITOR', 'mymaster', master, master_port]
-        
-        await asyncio.create_subprocess_exec(*sentinel_monitor)
+        cli.sentinel_monitor('mymaster', master, master_port, 2)
 
 
 
