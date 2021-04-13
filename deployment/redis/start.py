@@ -29,9 +29,9 @@ async def main(
     await asyncio.create_subprocess_exec(*redis_server)
 
     if sentinel and master and master_port:
-        cli = Redis()
-        # mymaster should be the same as in the conf files
-        cli.sentinel_monitor('mymaster', master, master_port, 2)
+        with Redis() as cli:
+            # mymaster should be the same as in the conf files
+            cli.sentinel_monitor('mymaster', master, master_port, 2)
 
 
 

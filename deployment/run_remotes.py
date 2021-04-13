@@ -79,6 +79,11 @@ if __name__ == "__main__":
             cmd2 = "./start.py"
 
         elif args.database == "mongodb":
-            cmd2 = "./start.py"
+            cmd2 = "./start.py -c cluster.json "
         
         run_ips(ips, args.user, cmd2, args.out)
+
+
+
+
+

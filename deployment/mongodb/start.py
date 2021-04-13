@@ -22,35 +22,38 @@ class ReplInfo(NamedTuple):
 ClusterType = Literal['mongos', 'configs', 'shards']
 
 class Cluster(TypedDict):
+    logpath: str
     mongos: Mongos
     configs: ReplInfo
     shards: ReplInfo
 
 
 
-async def create_replica(mem_idx: int, info: ReplInfo, is_shard: bool):
+async def create_replica(
+    mem_idx: int, info: ReplInfo, is_shard: bool, logpath: str):
+
     mongod_cmd = ['mongod']
     mongod_cmd.append('--shardsvr' if is_shard else 'configsvr')
     mongod_cmd += ['--replSet', info.set_name]
     mongod_cmd += ['--port', str(info.port)]
     mongod_cmd += ['--bind_ip', info.members[mem_idx]]
+    mongod_cmd += ['--logpath', logpath]
 
     await asyncio.create_subprocess_exec(*mongod_cmd)
 
 
 
 def initiate(info: ReplInfo, configsvr: bool):
-    repl_cli = MongoClient('localhost', info.port)
-    config = {
-        '_id': info.set_name,
-        'configsvr': configsvr,
-        'members': [
-            {'_id': i, 'host': f'{m}:{info.port}'}
-            for i, m in enumerate(info.members) ]
-    }
+    with MongoClient('localhost', info.port) as cli:
+        config = {
+            '_id': info.set_name,
+            'configsvr': configsvr,
+            'members': [
+                {'_id': i, 'host': f'{m}:{info.port}'}
+                for i, m in enumerate(info.members) ]
+        }
 
-    repl_cli['admin'].command("replSetInitiate", config)
-    repl_cli.close()
+        cli['admin'].command("replSetInitiate", config)
 
 
 
@@ -66,6 +69,7 @@ async def start_mongos(cluster: Cluster):
     mongos_cmd += ['--configdb', config_set]
     mongos_cmd += ['--port', str(mongos.port)]
     mongos_cmd += ['--bind_ip', mongos.host]
+    mongos_cmd += ['--logpath', cluster['logpath']]
 
     await asyncio.create_subprocess_exec(*mongos_cmd)
 
@@ -73,9 +77,8 @@ async def start_mongos(cluster: Cluster):
     shard_set = {
         'addShard': f"{shards.set_name}/{','.join(shard_locs)}" }
 
-    mongos_cli = MongoClient('localhost', mongos.port)
-    mongos_cli['admin'].command("addShard", shard_set)
-    mongos_cli.close()
+    with MongoClient('localhost', mongos.port) as cli:
+        cli['admin'].command("addShard", shard_set)
 
 
 
@@ -101,7 +104,11 @@ async def main(cluster: str, role: ClusterType, member: Optional[int]):
     if role == 'mongos':
         await start_mongos(cluster_info)
     elif member:
-        await create_replica(member, cluster_info[role], role == 'shards')
+        await create_replica(
+            member,
+            cluster_info[role],
+            role == 'shards',
+            cluster_info['logpath'])
     else:
         initiate(cluster_info[role], role == 'configs')
 
