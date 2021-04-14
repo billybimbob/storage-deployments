@@ -9,7 +9,7 @@ import asyncio.subprocess as proc
 import argparse
 import os
 import shlex
-import subprocess
+
 
 BASE_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 MONGODB = BASE_DIR / 'mongodb'
@@ -22,16 +22,11 @@ def valid_ip(ip: str):
 
 def get_ips(file_name: str):
     with open(file_name, 'r') as f:
-        ips: List[str] = []
-        for line in f.readlines():
-            if valid_ip(line):
-                ips.append(line)
-
-        return ips
+        return [ line for line in f if valid_ip(line) ]
 
 
-
-async def redis_scp(ips: List[str], user: str, slave_count: int, sentinal_count: int):
+async def redis_scp(
+    ips: List[str], user: str, slave_count: int, sentinal_count: int):
 
     if len(ips) < 1 + slave_count + sentinal_count:
         print("not enough instances")
@@ -52,7 +47,7 @@ async def redis_scp(ips: List[str], user: str, slave_count: int, sentinal_count:
         scp.append(f"{user}@{ips[idx]}/home")
         await aio.create_subprocess_exec(*scp, STDOUT=proc.PIPE)
 
-    await aio.gather(*[run_scp(i) for i in range(len(ips))])    
+    await aio.gather(*[ run_scp(i) for i in range(len(ips)) ])
 
 
 
@@ -69,37 +64,52 @@ async def mongodb_scp(ips: List[str], user: str):
 
     await aio.gather(*[run_scp(ip) for ip in ips])    
 
+
+
 async def redis_start(ips: List[str], user: str):
     master_node_port = 6379
-    for i in range(len(ips)):
-        if i == 0:
-            conf = "master.sentinel"
-            other = ""
-        elif i == 1:
-            conf = "sentinel.conf"
-            other = f"-s -m {ips[0]} -p {master_node_port}"
-        else:
-            conf = "slave.conf"
-            other = f"-m {ips[0]} -p {master_node_port}"
+    async def run_start(idx: int):
+        cmd = [f"./start.py"]
 
-        cmd = f"./start.py -r /usr/local/bin/redis-server -c {conf} {other}"
-        cmd = " ".split(f'ssh {user}@{ips[i]} "{cmd}"')
-        
-        await aio.create_subprocess_exec(*cmd, STDOUT=proc.PIPE)
+        if idx == 0:
+            cmd += ['-c', 'master.conf']
+
+        elif idx == 1:
+            cmd += ['-c', 'sentinel.conf']
+            cmd += ['-s']
+            cmd += ['-m', ips[0]]
+            cmd += ['-p', str(master_node_port)]
+
+        else:
+            cmd += ['-c', 'slave.conf']
+            cmd += ['-m', ips[0]]
+            cmd += ['-p', str(master_node_port)]
+
+        ssh = shlex.split(f'ssh {user}@{ips[idx]} "{cmd}"')
+        await aio.create_subprocess_exec(*ssh, STDOUT=proc.PIPE)
+
+    await aio.gather(*[ run_start(i) for i in range(len(ips)) ])
+
+
 
 async def mongo_start(ips: List[str], user: str):
-    for i in range(len(ips)):
-        if i == 0:
+    async def run_start(idx: int):
+        if idx == 0:
             role = "mongos"
-        elif i == 1:
+        elif idx == 1:
             role = "config"
         else:
             role = "shards"
 
-        cmd = f"./start.py -c cluster.json -m {i} -r {role}"
-        cmd = " ".split(f'ssh {user}@{ips[i]} "{cmd}"')
+        # index needs to be adjusted
+        cmd = f"./start.py -c cluster.json -m {idx} -r {role}"
+        ssh = shlex.split(f'ssh {user}@{ips[idx]} "{cmd}"')
         
-        await aio.create_subprocess_exec(*cmd, STDOUT=proc.PIPE)
+        await aio.create_subprocess_exec(*ssh, STDOUT=proc.PIPE)
+
+    await aio.gather(*[ run_start(i) for i in range(len(ips)) ])
+
+
 
 async def run_ips(
     ips: List[str], user: str, ssh_cmd: str, write_out: Optional[str]):
@@ -112,7 +122,9 @@ async def run_ips(
         ran, _ = await ssh_proc.communicate()
         return ran.decode()
 
-    results = await aio.gather(*[ssh_run(ip) for ip in ips])
+    results = await aio.gather(
+        *[ ssh_run(ip) for ip in ips ],
+        return_exceptions=True)
 
     if write_out:
         with open(write_out, "a+") as f:
@@ -122,29 +134,34 @@ async def run_ips(
     for ip, res in zip(ips, results):
         print(f"finished cmd {ssh_cmd} at {ip} with output:\n{res}") 
 
+
+
 async def main(file: str, user: str, database: str, out: str):
     ips = get_ips(file)
+    if not ips:
+        return
 
-    if ips != []:
+    # note: fixed number of slaves and sentials for 
+    # redis and fixed number of slaves for mongodb
+    if database == "redis":
+        await redis_scp(ips, user, 1, 1)
 
-        #note: fixed number of slaves and sentials for redis and fixed number of slaves for mongodb
-        if args.database == "redis":
-            await redis_scp(ips, args.user, 1, 1)
+    elif database == "mongodb":
+        await mongodb_scp(ips, user)
 
-        elif args.database == "mongodb":
-            await mongodb_scp(ips, args.user)
+    cmd0 = "cd ~/home"
+    await run_ips(ips, user, cmd0, out)
+
+    cmd1 = "./install.sh"
+    await run_ips(ips, user, cmd1, out)
+
+    if database == "redis":
+        await redis_start(ips, user)
     
-        cmd0 = "cd ~/home"
-        await run_ips(ips, user, cmd0, out)
+    elif database == "mongodb":
+        await mongo_start(ips, user)
 
-        cmd1 = "./install.sh"
-        await run_ips(ips, user, cmd1, out)
 
-        if args.database == "redis":
-            await redis_start(ips, args.user)
-        
-        elif args.database == "mongodb":
-            await mongo_start(ips, args.user)
             
 if __name__ == "__main__":
     parse = argparse.ArgumentParser(

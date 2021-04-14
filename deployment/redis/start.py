@@ -4,25 +4,21 @@ import asyncio
 
 from typing import Optional
 from argparse import ArgumentParser
-from pathlib import Path
-
 from redis.client import Redis
 
 
 async def main(
-    redis: str,
     conf: str,
     sentinel: bool,
     master: Optional[str],
     master_port: Optional[int]):
 
-    redis_server = Path(redis).with_name('redis-server')
-    redis_server = [str(redis_server), conf]
+    redis_server = ['redis-server', conf]
 
     if not sentinel and master and master_port:
         redis_server.extend(['--slaveof', master, str(master_port)])
 
-    if sentinel and master and master_port:
+    elif sentinel and master and master_port:
         redis_server.append('--sentinel')
 
     print(f'cmd: {redis_server}')
@@ -37,10 +33,6 @@ async def main(
 
 if __name__ == "__main__":
     args = ArgumentParser(description="Start the redis programs")
-
-    args.add_argument('-r', '--redis', 
-        default='',
-        help='the path to the compiled redis binaries')
 
     args.add_argument('-c', '--conf', 
         required=True,

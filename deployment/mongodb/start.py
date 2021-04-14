@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
 from argparse import ArgumentParser
-from typing import Any, List, Literal, NamedTuple, Optional, TypedDict
+from dataclasses import asdict, astuple, dataclass
+from typing import (
+    Any, List, Literal, NamedTuple, Optional, Tuple, TypedDict, cast)
 
 from pymongo.mongo_client import MongoClient
 
@@ -13,6 +16,10 @@ class Log(NamedTuple):
     path: str
     level: int
 
+    @property
+    def verbosity(self):
+        return max(1, min(self.level, 5))
+
 class Mongos(NamedTuple):
     port: int
     host: str
@@ -23,29 +30,42 @@ class ReplInfo(NamedTuple):
     members: List[str]
 
 
-ClusterType = Literal['mongos', 'configs', 'shards']
+Mongot = Literal['mongos', 'configs', 'shards']
 
-class Cluster(TypedDict):
+@dataclass(frozen=True)
+class Cluster:
     log: Log
     mongos: Mongos
     configs: ReplInfo
     shards: ReplInfo
+
+    class Dict(TypedDict):
+        log: Log
+        mongos: Mongos
+        configs: ReplInfo
+        shards: ReplInfo
+
+    def as_tuple(self):
+        return cast(
+            Tuple[Log, Mongos, ReplInfo, ReplInfo],
+            astuple(self))
+
+    def as_dict(self):
+        return cast(Cluster.Dict, asdict(self))
 
 
 
 async def create_replica(
     mem_idx: int, info: ReplInfo, is_shard: bool, log: Log):
 
-    verbosity = min(1, log.level)
-    verbosity = max(5, verbosity)
-    verbosity = '-' + ''.join('v' for _ in range(verbosity))
+    verbosity = '-' + ''.join('v' for _ in range(log.verbosity))
 
     mongod_cmd = ['mongod', verbosity]
-    mongod_cmd.append('--shardsvr' if is_shard else 'configsvr')
+    mongod_cmd += ['--logpath', log.path]
+    mongod_cmd += ['--shardsvr' if is_shard else '--configsvr']
     mongod_cmd += ['--replSet', info.set_name]
     mongod_cmd += ['--port', str(info.port)]
     mongod_cmd += ['--bind_ip', info.members[mem_idx]]
-    mongod_cmd += ['--logpath', log.path]
 
     await asyncio.create_subprocess_exec(*mongod_cmd)
 
@@ -67,18 +87,17 @@ def initiate(info: ReplInfo, configsvr: bool):
 
 
 async def start_mongos(cluster: Cluster):
-    mongos = cluster['mongos']
-    configs = cluster['configs']
-    shards = cluster['shards']
+    log, mongos, configs, shards = cluster.as_tuple()
 
+    verbosity = '-' + ''.join('v' for _ in range(log.verbosity))
     config_locs = [ f"{c}:{configs.port}" for c in configs.members ]
     config_set = f"{configs.set_name}/{','.join(config_locs)}"
 
-    mongos_cmd = ['monogos']
+    mongos_cmd = ['monogos', verbosity]
+    mongos_cmd += ['--logpath', log.path]
     mongos_cmd += ['--configdb', config_set]
     mongos_cmd += ['--port', str(mongos.port)]
     mongos_cmd += ['--bind_ip', mongos.host]
-    mongos_cmd += ['--logpath', cluster['log'].path]
 
     await asyncio.create_subprocess_exec(*mongos_cmd)
 
@@ -111,22 +130,26 @@ def get_cluster(cluster_path: str):
 
 
 
-async def main(cluster: str, role: ClusterType, member: Optional[int]):
+async def main(cluster: str, role: Mongot, member: Optional[int]):
     cluster_info = get_cluster(cluster)
 
     if role == 'mongos' and member is not None:
         raise ValueError('mongos role received unexpected args')
 
-    if role == 'mongos':
+    elif role == 'mongos':
         await start_mongos(cluster_info)
+
     elif member:
         await create_replica(
             member,
-            cluster_info[role],
+            cluster_info.as_dict()[role],
             role == 'shards',
-            cluster_info['log'])
+            cluster_info.log)
+
     else:
-        initiate(cluster_info[role], role == 'configs')
+        initiate(
+            cluster_info.as_dict()[role],
+            role == 'configs')
 
 
 
