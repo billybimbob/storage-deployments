@@ -39,10 +39,10 @@ async def redis_scp(
         return
 
     async def run_scp(idx: int):
-        scp = ["scp", f"{REDIS}/install.sh", f"{REDIS}start.py"]
+        scp = ["scp", f"{REDIS}/install.sh", f"{REDIS}/start.py"]
 
         if idx == 0:
-            scp.append(f"{REDIS}confs/master.conf")
+            scp.append(f"{REDIS}/confs/master.conf")
 
         elif idx <= slave_count:
             scp.append(f"{REDIS}/confs/slave.conf")
@@ -51,27 +51,24 @@ async def redis_scp(
             scp.append(f"{REDIS}/confs/sentinel.conf")
 
         scp.append(f"{user}@{ips[idx]}/home")
-
-        await aio.create_subprocess_exec(
-            *scp,
-            STDOUT=proc.PIPE)
+        await aio.create_subprocess_exec(*scp, STDOUT=proc.PIPE)
 
     await aio.gather(*[run_scp(i) for i in range(len(ips))])    
 
 
 
 async def mongodb_scp(ips: List[str], user: str):
-    async def run_scp(i: int):
+    async def run_scp(ip: str):
         scp = [
             "scp",
             f"{MONGODB}/install.sh",
             f"{MONGODB}/start.py",
             f"{MONGODB}/cluster.conf",
-            f"{user}@{ips[i]}/home" ]
+            f"{user}@{ip}/home" ]
 
         await aio.create_subprocess_exec(*scp, STDOUT=proc.PIPE)
 
-    await aio.gather(*[run_scp(i) for i in range(len(ips))])    
+    await aio.gather(*[run_scp(ip) for ip in ips])    
 
 
 
@@ -116,10 +113,10 @@ async def main(file: str, user: str, database: str, out: str):
         cmd1 = "./install.sh"
         await run_ips(ips, user, cmd1, out)
 
-        if args.database == "redis":
+        if database == "redis":
             cmd2 = "./start.py"
 
-        # elif args.database == "mongodb":
+        # elif database == "mongodb":
         else:
             cmd2 = "./start.py -c cluster.json "
         
@@ -142,7 +139,8 @@ if __name__ == "__main__":
         help="write output of ssh stdout to file")
 
     parse.add_argument("-u", "--user",
-        default='ubuntu', help="the user for the ips, for now all the same")
+        default='ubuntu',
+        help="the user for the ips, for now all the same")
 
     args = parse.parse_args()
     aio.run(main(**vars(args)))

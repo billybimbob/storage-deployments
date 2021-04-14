@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 
 from argparse import ArgumentParser
-from typing import List, Literal, NamedTuple, Optional, TypedDict
+from typing import Any, List, Literal, NamedTuple, Optional, TypedDict
 
 from pymongo.mongo_client import MongoClient
 
 import asyncio
 import json
 
+
+class Log(NamedTuple):
+    path: str
+    level: int
 
 class Mongos(NamedTuple):
     port: int
@@ -22,7 +26,7 @@ class ReplInfo(NamedTuple):
 ClusterType = Literal['mongos', 'configs', 'shards']
 
 class Cluster(TypedDict):
-    logpath: str
+    log: Log
     mongos: Mongos
     configs: ReplInfo
     shards: ReplInfo
@@ -30,14 +34,18 @@ class Cluster(TypedDict):
 
 
 async def create_replica(
-    mem_idx: int, info: ReplInfo, is_shard: bool, logpath: str):
+    mem_idx: int, info: ReplInfo, is_shard: bool, log: Log):
 
-    mongod_cmd = ['mongod']
+    verbosity = min(1, log.level)
+    verbosity = max(5, verbosity)
+    verbosity = '-' + ''.join('v' for _ in range(verbosity))
+
+    mongod_cmd = ['mongod', verbosity]
     mongod_cmd.append('--shardsvr' if is_shard else 'configsvr')
     mongod_cmd += ['--replSet', info.set_name]
     mongod_cmd += ['--port', str(info.port)]
     mongod_cmd += ['--bind_ip', info.members[mem_idx]]
-    mongod_cmd += ['--logpath', logpath]
+    mongod_cmd += ['--logpath', log.path]
 
     await asyncio.create_subprocess_exec(*mongod_cmd)
 
@@ -53,6 +61,7 @@ def initiate(info: ReplInfo, configsvr: bool):
                 {'_id': i, 'host': f'{m}:{info.port}'}
                 for i, m in enumerate(info.members) ]
         }
+
         cli['admin'].command("replSetInitiate", config)
 
 
@@ -69,7 +78,7 @@ async def start_mongos(cluster: Cluster):
     mongos_cmd += ['--configdb', config_set]
     mongos_cmd += ['--port', str(mongos.port)]
     mongos_cmd += ['--bind_ip', mongos.host]
-    mongos_cmd += ['--logpath', cluster['logpath']]
+    mongos_cmd += ['--logpath', cluster['log'].path]
 
     await asyncio.create_subprocess_exec(*mongos_cmd)
 
@@ -83,13 +92,20 @@ async def start_mongos(cluster: Cluster):
 
 
 def get_cluster(cluster_path: str):
+
+    def convert_label(key: str, info: Any):
+        if key == 'log':
+            return Log(**info)
+        elif key == 'monogos':
+            return Mongos(**info)
+        else:
+            return ReplInfo(**info)
+
     with open(cluster_path,'r') as f:
         cluster = json.load(f) # should be a dict
         cluster = {
-            role: (ReplInfo(**info)
-                   if role != 'mongos' else
-                   Mongos(**info))
-            for role, info in cluster.items() }
+            label: convert_label(label, info)
+            for label, info in cluster.items() }
 
         return Cluster(**cluster)
 
@@ -108,7 +124,7 @@ async def main(cluster: str, role: ClusterType, member: Optional[int]):
             member,
             cluster_info[role],
             role == 'shards',
-            cluster_info['logpath'])
+            cluster_info['log'])
     else:
         initiate(cluster_info[role], role == 'configs')
 
