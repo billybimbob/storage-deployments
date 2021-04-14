@@ -44,7 +44,8 @@ async def create_replica(
 
 
 def initiate(info: ReplInfo, configsvr: bool):
-    with MongoClient('localhost', info.port) as cli:
+    # just use first member host by defaut
+    with MongoClient(info.members[0], info.port) as cli:
         config = {
             '_id': info.set_name,
             'configsvr': configsvr,
@@ -52,7 +53,6 @@ def initiate(info: ReplInfo, configsvr: bool):
                 {'_id': i, 'host': f'{m}:{info.port}'}
                 for i, m in enumerate(info.members) ]
         }
-
         cli['admin'].command("replSetInitiate", config)
 
 
@@ -62,7 +62,7 @@ async def start_mongos(cluster: Cluster):
     configs = cluster['configs']
     shards = cluster['shards']
 
-    config_locs = [ f"{m}:{configs.port}" for m in configs.members ]
+    config_locs = [ f"{c}:{configs.port}" for c in configs.members ]
     config_set = f"{configs.set_name}/{','.join(config_locs)}"
 
     mongos_cmd = ['monogos']
