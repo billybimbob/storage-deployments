@@ -1,5 +1,8 @@
 {
-    "logpath": "/var/log/mongodb.log",
+    "log": {
+        "path": "/var/log/mongodb.log",
+        "level": 4
+    },
 
     "mongos": {
         "port": 27017,
