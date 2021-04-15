@@ -178,16 +178,18 @@ if __name__ == "__main__":
 
     parse.add_argument("-d", "--database",
         default='redis',
-        help="select database (redis or mongodb)")
+		choices=['redis', 'mongodb'],
+		help="select database")
 
     parse.add_argument("-f", "--file",
+		required=True,
         help="file that contains the ips")
 
     parse.add_argument("-o", "--out", 
         help="write output of ssh stdout to file")
 
     parse.add_argument("-u", "--user",
-        default='ubuntu',
+		default='cc',
         help="the user for the ips, for now all the same")
 
     args = parse.parse_args()
