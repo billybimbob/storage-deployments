@@ -32,22 +32,22 @@ async def main(
 
 
 if __name__ == "__main__":
-    args = ArgumentParser(description="Start the redis programs")
+    args = ArgumentParser(description = 'Start the redis programs')
 
     args.add_argument('-c', '--conf', 
-        required=True,
-        help='the redis configuration file')
+        required = True,
+        help = 'the redis configuration file')
 
     args.add_argument('-s', '--sentinel',
-        action='store_true',
-        help='start as a sentinel node')
+        action = 'store_true',
+        help = 'start as a sentinel node')
 
     args.add_argument('-m', '--master',
-        help='location of the master node')
+        help = 'location of the master node')
 
     args.add_argument('-p', '--master-port',
-        type=int,
-        help='port of the master node')
+        type = int,
+        help = 'port of the master node')
     
     args = args.parse_args()
     asyncio.run(main(**vars(args)))

@@ -154,25 +154,21 @@ async def main(cluster: str, role: Mongot, member: Optional[int]):
 
 
 if __name__ == "__main__":
-    args = ArgumentParser(description='start mongo daemon processes')
+    args = ArgumentParser(description = 'start mongo daemon processes')
 
     args.add_argument('-c', '--cluster',
-        required=True, 
-        help="file path to cluster info")
-
-    # args.add_argument( '-i', '--init',
-    #     action='store_true',
-    #     help='run initilize command for config or shard roles')
+        required = True, 
+        help = 'file path to cluster info')
 
     args.add_argument('-m', '--member',
-        type=int,
-        help='member index for either config or shard roles;'
-            ' runs initilize if not specified')
+        type = int,
+        help = 'member index for either config or shard roles; '
+               'runs initialize if not specified')
 
     args.add_argument('-r', '--role',
-        choices=['mongos', 'configs', 'shards'],
-        required=True,
-        help='the cluster role being modified')
+        choices = ['mongos', 'configs', 'shards'],
+        required = True,
+        help = 'the cluster role being modified')
 
     args = args.parse_args()
     asyncio.run(main(**vars(args)))
