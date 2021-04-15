@@ -45,7 +45,7 @@ async def redis_scp(
             scp.append(f"{REDIS}/confs/sentinel.conf")
 
         scp.append(f"{user}@{ips[idx]}/home")
-        await aio.create_subprocess_exec(*scp, STDOUT=proc.PIPE)
+        await aio.create_subprocess_exec(*scp, stdout=proc.PIPE)
 
     await aio.gather(*[ run_scp(i) for i in range(len(ips)) ])
 
@@ -60,7 +60,7 @@ async def mongodb_scp(ips: List[str], user: str):
             f"{MONGODB}/cluster.conf",
             f"{user}@{ip}/home" ]
 
-        await aio.create_subprocess_exec(*scp, STDOUT=proc.PIPE)
+        await aio.create_subprocess_exec(*scp, stdout=proc.PIPE)
 
     await aio.gather(*[run_scp(ip) for ip in ips])    
 
@@ -69,8 +69,10 @@ async def mongodb_scp(ips: List[str], user: str):
 async def redis_start(ips: List[str], user: str):
     master_node_port = 6379
     async def run_start(idx: int):
-        cmd = [f"./start.py"]
+        cmd = ['./start.py']
 
+        # note: assume that there is only one of each 
+        # master, sentinel, and slave
         if idx == 0:
             cmd += ['-c', 'master.conf']
 
@@ -85,8 +87,9 @@ async def redis_start(ips: List[str], user: str):
             cmd += ['-m', ips[0]]
             cmd += ['-p', str(master_node_port)]
 
-        ssh = shlex.split(f'ssh {user}@{ips[idx]} "{cmd}"')
-        await aio.create_subprocess_exec(*ssh, STDOUT=proc.PIPE)
+        cmd = ' '.join(cmd)
+        cmd = shlex.split(f'ssh {user}@{ips[idx]} "{cmd}"')
+        await aio.create_subprocess_exec(*cmd, stdout=proc.PIPE)
 
     await aio.gather(*[ run_start(i) for i in range(len(ips)) ])
 
@@ -94,18 +97,24 @@ async def redis_start(ips: List[str], user: str):
 
 async def mongo_start(ips: List[str], user: str):
     async def run_start(idx: int):
-        if idx == 0:
-            role = "mongos"
-        elif idx == 1:
-            role = "config"
-        else:
-            role = "shards"
+        cmd = ['./start.py', '-c', 'cluster.json']
 
-        # index needs to be adjusted
-        cmd = f"./start.py -c cluster.json -m {idx} -r {role}"
-        ssh = shlex.split(f'ssh {user}@{ips[idx]} "{cmd}"')
-        
-        await aio.create_subprocess_exec(*ssh, STDOUT=proc.PIPE)
+        # note: assume that there is only one of each 
+        # mongos, config, and shard
+        if idx == 0:
+            cmd += ['-r', 'mongos']
+
+        elif idx == 1:
+            cmd += ['-m', str(0)]
+            cmd += ['-r', 'configs']
+
+        else:
+            cmd += ['-m', str(0)]
+            cmd += ['-r', 'shards']
+
+        cmd = ' '.join(cmd)
+        cmd = shlex.split(f'ssh {user}@{ips[idx]} "{cmd}"')
+        await aio.create_subprocess_exec(*cmd, stdout=proc.PIPE)
 
     await aio.gather(*[ run_start(i) for i in range(len(ips)) ])
 
@@ -127,7 +136,7 @@ async def run_ips(
         return_exceptions=True)
 
     if write_out:
-        with open(write_out, "a+") as f:
+        with open(write_out, 'w') as f:
             f.write('\n'.join(results))
             return
 
@@ -141,8 +150,8 @@ async def main(file: str, user: str, database: str, out: str):
     if not ips:
         return
 
-    # note: fixed number of slaves and sentials for 
-    # redis and fixed number of slaves for mongodb
+    # note: fixed number of slaves and sentials for redis 
+    # and fixed number of slaves for mongodb
     if database == "redis":
         await redis_scp(ips, user, 1, 1)
 
