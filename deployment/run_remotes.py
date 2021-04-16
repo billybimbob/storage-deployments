@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import (
     Iterable, List, Literal, NamedTuple, Optional, Tuple, Union)
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import asyncio as aio
 import asyncio.subprocess as proc
@@ -16,10 +16,10 @@ import shlex
 
 STORAGE_REPO = 'https://github.com/billybimbob/storage-deployments.git'
 # use path to parse / and extensions
-STORAGE_FOLDER = Path(STORAGE_REPO).stem
+STORAGE_FOLDER = PurePosixPath(STORAGE_REPO).stem
 
 
-BASE_DIR = Path(STORAGE_FOLDER) / 'deployment'
+BASE_DIR = PurePosixPath(STORAGE_FOLDER) / 'deployment'
 MONGODB = BASE_DIR / 'mongodb'
 REDIS = BASE_DIR / 'redis'
 
@@ -105,13 +105,13 @@ class Addresses:
 async def exec_remotes(user: str, remotes: List[Remote]) -> List[Result]:
 
     async def ssh_run(remote: Remote, run_num: int):
-        print(f'run: {run_num} running command {remote.ssh(user)}')
+        logging.debug(f'run: {run_num} running command {remote.ssh(user)}')
 
         ssh_proc = await aio.create_subprocess_exec(
             *remote.ssh(user), stdout=proc.PIPE, stderr=proc.PIPE)
 
         com = await ssh_proc.communicate()
-        print(f'run: {run_num} finished')
+        logging.debug(f'run: {run_num} finished')
 
         return ProcessOut.from_process(com)
 
@@ -200,7 +200,7 @@ def write_results(results: List[Result], out: Optional[str]):
         with open(out, 'w') as f:
             f.write(res_info)
     else:
-        print(res_info)
+        logging.debug(res_info)
 
 
 
@@ -211,7 +211,7 @@ async def main(
     if not ips:
         return
 
-    # print(f'cloning repo for addrs {ips}')
+    # logging.debug(f'cloning repo for addrs {ips}')
 
     # clone = f'git clone {STORAGE_REPO}'
     # results = await run_ips(user, ips, clone)
@@ -219,23 +219,25 @@ async def main(
     # failed = [ ip for ip, res in zip(ips, results) if res.is_error ]
 
     # if failed:
-    #     print(f'pulling git for addrs {failed}')
+    #     logging.debug(f'pulling git for addrs {failed}')
     #     pull = f'cd {STORAGE_FOLDER} && git pull'
     #     await run_ips(user, failed, pull)
 
     if database == "redis":
-        print('starting redis daemons')
+        logging.debug('starting redis daemons')
         results = await redis_start(user, ips)
         write_results(results, out)
     
     elif database == "mongodb":
-        print('starting mongo daemons')
+        logging.debug('starting mongo daemons')
         results = await mongo_start(user, ips)
         write_results(results, out)
 
 
             
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
+
     parse = argparse.ArgumentParser(
         'Runs the command on all ssh ips in the supplied file')
 
