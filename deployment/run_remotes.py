@@ -27,16 +27,13 @@ REDIS = BASE_DIR / 'redis'
 
 Database = Literal['redis', 'mongodb']
 
-
 class ProcessOut(NamedTuple):
     out: str
     err: str
 
     @staticmethod
-    def from_tuple(proc_res: Tuple[bytes, bytes]):
-        out, err = proc_res
-        return ProcessOut(out.decode(), err.decode())
-
+    def from_processs(std: Tuple[bytes, bytes]):
+        return ProcessOut(*[s.decode() for s in std])
 
 
 @dataclass(init=False)
@@ -48,6 +45,7 @@ class Remote:
     def valid_ip(ip: str):
         return len(ip.split(".")) == 4
 
+
     def __init__(self, ip: str, cmd: Union[str, List[str]]):
         if not Remote.valid_ip(ip):
             raise ValueError('ip is not valid')
@@ -58,13 +56,20 @@ class Remote:
         self.ip = ip
         self.cmd = cmd
 
-    def ssh(self, user: str):
+
+    def ssh(self, user: str) -> List[str]:
         return shlex.split(f'ssh {user}@{self.ip} "{self.cmd}"')
 
 
 class Result(NamedTuple):
     remote: Remote
     output: Union[ProcessOut, Exception]
+
+    @property
+    def is_error(self):
+        out = self.output
+        return isinstance(out, Exception) or bool(out.err)
+
 
 
 @dataclass
@@ -97,17 +102,18 @@ async def exec_remotes(user: str, remotes: List[Remote]) -> List[Result]:
 
     async def ssh_run(remote: Remote):
         ssh_proc = await aio.create_subprocess_exec(
-            *remote.ssh(user), stdout=proc.PIPE, stderr=proc.STDOUT)
+            *remote.ssh(user), stdout=proc.PIPE, stderr=proc.PIPE)
 
-        res = await ssh_proc.communicate()
-        return ProcessOut.from_tuple(res)
+        com = await ssh_proc.communicate()
+        return ProcessOut.from_processs(com)
 
     outputs = await aio.gather(
         *[ ssh_run(remote) for remote in remotes ],
         return_exceptions=True)
 
     return [
-        Result(rem, out) for rem, out in zip(remotes, outputs) ]
+        Result(*rem_out)
+        for rem_out in zip(remotes, outputs) ]
 
 
 
@@ -117,11 +123,6 @@ async def run_ips(user: str, ips: Iterable[str], cmd: str) -> List[Result]:
         return list()
 
     return await exec_remotes(user, cmds)
-
-
-async def is_error(result: Result):
-    out = result.output
-    return isinstance(out, Exception) or bool(out.err)
 
 
 
@@ -213,7 +214,7 @@ async def main(
     clone = f'git clone {STORAGE_REPO}'
     results = await run_ips(user, ips, clone)
 
-    failed = [ ip for ip, res in zip(ips, results) if is_error(res) ]
+    failed = [ ip for ip, res in zip(ips, results) if res.is_error ]
 
     if failed:
         pull = f'cd {STORAGE_FOLDER} && git pull'
@@ -236,7 +237,7 @@ if __name__ == "__main__":
     parse.add_argument('-d', '--database',
         default = 'redis',
         choices = ['redis', 'mongodb'],
-		help = 'select database')
+        help = 'select database')
 
     parse.add_argument('-f', '--file',
         required = True,

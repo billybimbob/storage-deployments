@@ -4,7 +4,7 @@ import asyncio
 
 from typing import Optional
 from argparse import ArgumentParser
-from redis.client import Redis
+from redis import Redis
 
 
 async def main(
@@ -32,7 +32,7 @@ async def main(
 
 
 if __name__ == "__main__":
-    args = ArgumentParser(description = 'Start the redis programs')
+    args = ArgumentParser(description = 'start the redis programs')
 
     args.add_argument('-c', '--conf', 
         required = True,

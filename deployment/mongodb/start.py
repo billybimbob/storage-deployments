@@ -6,7 +6,7 @@ from dataclasses import asdict, astuple, dataclass
 from typing import (
     Any, List, Literal, NamedTuple, Optional, Tuple, TypedDict, cast)
 
-from pymongo.mongo_client import MongoClient
+from pymongo import MongoClient
 
 import asyncio
 import json

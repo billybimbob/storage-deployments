@@ -1,2 +1,4 @@
 redis
+types-redis
 pymongo
+pymongo-stubs
