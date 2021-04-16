@@ -2,8 +2,8 @@
 
 from dataclasses import dataclass
 from typing import (
-    Iterable, List, Literal, NamedTuple, Optional, Tuple, Union)
-from pathlib import Path, PurePosixPath
+    Any, Dict, Iterable, List, Literal, NamedTuple, Optional, Tuple, Union)
+from pathlib import Path, PurePath, PurePosixPath
 
 import asyncio as aio
 import asyncio.subprocess as proc
@@ -16,13 +16,10 @@ import shlex
 
 STORAGE_REPO = 'https://github.com/billybimbob/storage-deployments.git'
 # use path to parse / and extensions
-STORAGE_FOLDER = PurePosixPath(STORAGE_REPO).stem
+STORAGE_FOLDER = PurePosixPath( PurePath(STORAGE_REPO).stem )
 
-
-BASE_DIR = PurePosixPath(STORAGE_FOLDER) / 'deployment'
-MONGODB = BASE_DIR / 'mongodb'
-REDIS = BASE_DIR / 'redis'
-
+DEPLOYMENT = STORAGE_FOLDER / 'deployment'
+LOGS = STORAGE_FOLDER / 'monitor_and_graphs' / 'logs'
 
 
 Database = Literal['redis', 'mongodb']
@@ -33,7 +30,7 @@ class ProcessOut(NamedTuple):
 
     @staticmethod
     def from_process(std: Tuple[bytes, bytes]):
-        return ProcessOut(*[s.decode() for s in std])
+        return ProcessOut(*[ s.decode() for s in std ])
 
 
 @dataclass(init=False)
@@ -58,9 +55,7 @@ class Remote:
 
 
     def ssh(self, user: str) -> List[str]:
-        cmd = shlex.split(f'ssh {user}@{self.ip}')
-        cmd.append(f"{self.cmd}")
-        return cmd
+        return shlex.split(f'ssh {user}@{self.ip} {self.cmd}')
 
 
 class Result(NamedTuple):
@@ -110,13 +105,22 @@ async def exec_remotes(user: str, remotes: List[Remote]) -> List[Result]:
         ssh_proc = await aio.create_subprocess_exec(
             *remote.ssh(user), stdout=proc.PIPE, stderr=proc.PIPE)
 
-        com = await ssh_proc.communicate()
-        logging.debug(f'run: {run_num} finished')
+        logging.debug(f'run: {run_num} waiting')
 
-        return ProcessOut.from_process(com)
+        try:
+            com = await aio.wait_for(ssh_proc.communicate(), 8)
+            logging.debug(f'run: {run_num} finished')
+            return ProcessOut.from_process(com)
+
+        except aio.TimeoutError:
+            logging.error(f'run: {run_num} took too long')
+            ssh_proc.kill()
+            await ssh_proc.wait()
+            raise
+
 
     outputs = await aio.gather(
-        *[ ssh_run(remote, i) for i, remote in enumerate(remotes) ],
+        *[ ssh_run(remote, i+1) for i, remote in enumerate(remotes) ],
         return_exceptions=True)
 
     return [
@@ -136,17 +140,22 @@ async def run_ips(user: str, ips: Iterable[str], cmd: str) -> List[Result]:
 
 async def redis_start(user: str, ips: Addresses):
     master_node_port = 6379
+    redis = DEPLOYMENT / 'redis'
+    r_log = LOGS / 'redis'
+
     starts: List[Remote] = []
-    base = [f'./{REDIS}/start.py']
+    base = [f'./{redis}/start.py']
 
     for ip in ips.main:
         cmd = list(base)
-        cmd += ['-c', f'{BASE_DIR}/redis/confs/master.conf']
+        cmd += ['-l', f'{r_log}/master.log']
+        cmd += ['-c', f'{redis}/confs/master.conf']
         starts.append( Remote(ip, cmd) )
 
     for ip in ips.misc:
         cmd = list(base)
-        cmd += ['-c', f'{BASE_DIR}/redis/confs/sentinel.conf']
+        cmd += ['-l', f'{r_log}/sentinel.log']
+        cmd += ['-c', f'{redis}/confs/sentinel.conf']
         cmd += ['-s']
         cmd += ['-m', ip]
         cmd += ['-p', str(master_node_port)]
@@ -154,7 +163,8 @@ async def redis_start(user: str, ips: Addresses):
 
     for ip in ips.data:
         cmd = list(base)
-        cmd += ['-c', f'{BASE_DIR}/redis/confs/slave.conf']
+        cmd += ['-l', f'{r_log}/slave.log']
+        cmd += ['-c', f'{redis}/confs/slave.conf']
         cmd += ['-m', ip]
         cmd += ['-p', str(master_node_port)]
         starts.append( Remote(ip, cmd) )
@@ -164,8 +174,26 @@ async def redis_start(user: str, ips: Addresses):
 
 
 async def mongo_start(user: str, ips: Addresses):
+    mongodb = DEPLOYMENT / 'mongodb'
+    m_log = LOGS / 'mongodb'
+    
+    # update cluster json
+    cluster_loc = Path(__file__) / 'deployment' / 'cluster.json'
+    with open(cluster_loc, 'r+') as f:
+        cluster: Dict[str, Any] = json.load(f)
+
+        cluster['log'].path = m_log
+        # look into multiple mongos
+        cluster['mongos'].host = ips.main[0]
+        cluster['configs'].members = ips.misc
+        cluster['shards'].members = ips.data
+
+        json.dump(cluster, f, indent=4)
+
+    # should  scp updated cluster
+
     starts: List[Remote] = []
-    base = [f'./{MONGODB}/start.py', '-c', f'{MONGODB}/cluster.json']
+    base = [f'./{mongodb}/start.py', '-c', f'{mongodb}/cluster.json']
 
     for ip in ips.main:
         cmd = list(base)
@@ -188,7 +216,7 @@ async def mongo_start(user: str, ips: Addresses):
 
 
 
-def write_results(results: List[Result], out: Optional[str]):
+def write_results(results: List[Result], out: Optional[str] = None):
     res_info = [
         f"finished cmd {r.remote.cmd} at {r.remote.ip} "
         f"with output:\n{r.output}"
@@ -205,23 +233,26 @@ def write_results(results: List[Result], out: Optional[str]):
 
 
 async def main(
-    file: str, user: str, database: Database, out: Optional[str]):
+    file: Optional[str], user: str, database: Database, out: Optional[str]):
+
+    if file is None:
+        file = str(Path(__file__).parent / 'ip-addresses')
 
     ips = Addresses.from_json(file)
     if not ips:
         return
 
-    # logging.debug(f'cloning repo for addrs {ips}')
+    logging.debug(f'cloning repo for addrs {ips}')
 
-    # clone = f'git clone {STORAGE_REPO}'
-    # results = await run_ips(user, ips, clone)
+    clone = f'git clone {STORAGE_REPO}'
+    results = await run_ips(user, ips, clone)
 
-    # failed = [ ip for ip, res in zip(ips, results) if res.is_error ]
+    failed = [ ip for ip, res in zip(ips, results) if res.is_error ]
 
-    # if failed:
-    #     logging.debug(f'pulling git for addrs {failed}')
-    #     pull = f'cd {STORAGE_FOLDER} && git pull'
-    #     await run_ips(user, failed, pull)
+    if failed:
+        logging.debug(f'pulling git for addrs {failed}')
+        pull = f'cd {STORAGE_FOLDER} && git pull'
+        await run_ips(user, failed, pull)
 
     if database == "redis":
         logging.debug('starting redis daemons')
@@ -236,6 +267,7 @@ async def main(
 
             
 if __name__ == "__main__":
+    logging.getLogger('asyncio').setLevel(logging.WARNING)
     logging.basicConfig(level=logging.DEBUG)
 
     parse = argparse.ArgumentParser(
@@ -247,7 +279,6 @@ if __name__ == "__main__":
         help = 'select database')
 
     parse.add_argument('-f', '--file',
-        required = True,
         help = 'file that contains the ips')
 
     parse.add_argument('-o', '--out', 
