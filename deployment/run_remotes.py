@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from typing import (
-    Any, Dict, List, Literal, NamedTuple, Optional, Sequence, Tuple, Union)
+    Any, List, Literal, NamedTuple, Optional, Sequence, Tuple, Union)
 from pathlib import Path, PurePath, PurePosixPath
 
 import asyncio as aio
@@ -24,54 +24,6 @@ LOGS = STORAGE_FOLDER / 'monitor_and_graphs' / 'logs'
 
 Database = Literal['redis', 'mongodb']
 
-class Standards(NamedTuple):
-    out: str
-    err: str
-
-    @staticmethod
-    def from_process(std: Tuple[bytes, bytes]):
-        return Standards(*[ s.decode() for s in std ])
-
-
-@dataclass(init=False)
-class Remote:
-    user: str
-    ip: str
-    cmd: str
-
-    @staticmethod
-    def valid_ip(ip: str):
-        return len(ip.split(".")) == 4
-
-
-    def __init__(self, user: str, ip: str, cmd: Union[str, List[str]]):
-        if not Remote.valid_ip(ip):
-            raise ValueError('ip is not valid')
-
-        if isinstance(cmd, list):
-            cmd = ' '.join(cmd)
-
-        self.user = user
-        self.ip = ip
-        self.cmd = cmd
-
-
-    @property
-    def ssh(self) -> List[str]:
-        return shlex.split(f'ssh {self.user}@{self.ip} {self.cmd}')
-
-
-class Result(NamedTuple):
-    command: Sequence[str]
-    output: Union[Standards, Exception]
-
-    @property
-    def is_error(self):
-        out = self.output
-        return isinstance(out, Exception) or bool(out.err)
-
-
-
 @dataclass
 class Addresses:
     main: List[str]
@@ -88,6 +40,7 @@ class Addresses:
         yield from self.data
         yield from self.misc
 
+
     @staticmethod
     def from_json(path: Union[str, Path]):
         if isinstance(path, str):
@@ -99,10 +52,56 @@ class Addresses:
             return Addresses(**ips)
 
 
+@dataclass(init=False)
+class Remote:
+    user: str
+    ip: str
+    cmd: str
+
+    @property
+    def ssh(self) -> List[str]:
+        return shlex.split(f'ssh {self.user}@{self.ip} {self.cmd}')
+
+    @staticmethod
+    def valid_ip(ip: str):
+        return len(ip.split(".")) == 4
+
+    def __init__(self, user: str, ip: str, cmd: Union[str, List[str]]):
+        if not Remote.valid_ip(ip):
+            raise ValueError('ip is not valid')
+
+        if isinstance(cmd, list):
+            cmd = ' '.join(cmd)
+
+        self.user = user
+        self.ip = ip
+        self.cmd = cmd
+
+
+class Standards(NamedTuple):
+    out: str
+    err: str
+
+    @staticmethod
+    def from_process(std: Tuple[bytes, bytes]):
+        return Standards(*[ s.decode() for s in std ])
+
+
+class Result(NamedTuple):
+    command: Sequence[str]
+    output: Union[Standards, Exception]
+
+    @property
+    def is_error(self):
+        out = self.output
+        return isinstance(out, Exception) or bool(out.err)
+
+
 
 async def exec_commands(*commands: List[str]) -> List[Result]:
+    """ Runs multiple commands with timeout, and wraps them in results """
 
-    async def ssh_run(cmd: List[str], run_num: int):
+    async def process_exec(cmd: List[str], run_num: int):
         logging.debug(f'run: {run_num} running command {cmd}')
 
         ssh_proc = await aio.create_subprocess_exec(
@@ -123,7 +122,7 @@ async def exec_commands(*commands: List[str]) -> List[Result]:
             raise
 
     outputs = await aio.gather(
-        *[ ssh_run(cmd, i+1) for i, cmd in enumerate(commands) ],
+        *[ process_exec(cmd, i+1) for i, cmd in enumerate(commands) ],
         return_exceptions=True)
 
     return [
@@ -132,7 +131,7 @@ async def exec_commands(*commands: List[str]) -> List[Result]:
 
 
 
-async def run_ips(cmd: str, user: str, *ips: str) -> List[Result]:
+async def run_ssh(cmd: str, user: str, *ips: str) -> List[Result]:
     cmds = [ Remote(user, ip, cmd) for ip in ips ]
     if not cmds:
         return list()
@@ -183,11 +182,11 @@ async def mongo_start(user: str, ips: Addresses) -> List[Result]:
     # update cluster json
     cluster_loc = Path(__file__) / 'deployment' / 'cluster.json'
     with open(cluster_loc, 'r+') as f:
-        cluster: Dict[str, Any] = json.load(f)
+        cluster = json.load(f)
 
-        cluster['log'].path = m_log
+        cluster['log'].path = str(m_log)
         # look into multiple mongos
-        cluster['mongos'].host = ips.main[0]
+        cluster['mongos'].members = ips.main
         cluster['configs'].members = ips.misc
         cluster['shards'].members = ips.data
 
@@ -240,27 +239,19 @@ def write_results(results: List[Result], out: Optional[str] = None):
 
 
 
-async def main(
-    file: Optional[str], user: str, database: Database, out: Optional[str]):
-
-    if file is None:
-        file = str(Path(__file__).parent / 'ip-addresses')
-
-    ips = Addresses.from_json(file)
-    if not ips:
-        return
+async def run_starts(
+    ips: Addresses, user: str, database: Database, out: Optional[str]):
 
     logging.debug(f'cloning repo for addrs {ips}')
-
     clone = f'git clone {STORAGE_REPO}'
-    results = await run_ips(clone, user, *ips)
+    results = await run_ssh(clone, user, *ips)
 
     failed = [ ip for ip, res in zip(ips, results) if res.is_error ]
 
     if failed:
         logging.debug(f'pulling git for addrs {failed}')
         pull = f'cd {STORAGE_FOLDER} && git pull'
-        await run_ips(pull, user, *failed)
+        await run_ssh(pull, user, *failed)
 
     if database == "redis":
         logging.debug('starting redis daemons')
@@ -273,6 +264,40 @@ async def main(
         write_results(results, out)
 
 
+
+async def run_shutdown(
+    ips: Addresses, user: str, database: Database, out: Optional[str]):
+
+    # go reverse so that main nodes end last
+    if database == 'redis':
+        logging.debug('stopping redis daemons')
+        results = await run_ssh(
+            'redis-cli shutdown', user, *ips.data, *ips.misc, *ips.main)
+        write_results(results, out)
+
+    elif database == 'mongodb':
+        logging.debug('stopping mongo daemons')
+        results = await run_ssh( # mongos should also shutdown with this
+            'mongod --shutdown', user, *ips.data, *ips.misc, *ips.main)
+        write_results(results)
+
+
+
+async def main(file: Optional[str], shutdown: bool, **run_args: Any):
+    if file is None:
+        file = str(Path(__file__).parent / 'ip-addresses')
+
+    ips = Addresses.from_json(file)
+
+    if not ips:
+        logging.info('no ips were found')
+        return
+
+    if not shutdown:
+        await run_starts(ips, **run_args)
+    else:
+        await run_shutdown(ips, **run_args)
+
             
 if __name__ == "__main__":
     logging.getLogger('asyncio').setLevel(logging.WARNING)
@@ -283,7 +308,7 @@ if __name__ == "__main__":
 
     parse.add_argument('-d', '--database',
         default = 'redis',
-        choices = ['redis', 'mongodb'],
+        choices = ['mongodb','redis'],
         help = 'select database')
 
     parse.add_argument('-f', '--file',
@@ -291,6 +316,10 @@ if __name__ == "__main__":
 
     parse.add_argument('-o', '--out', 
         help = 'write output of ssh stdout to file')
+
+    parse.add_argument('-s', '--shutdown',
+        action = 'store_true',
+        help = 'run shutdown process instead of default start')
 
     parse.add_argument('-u', '--user',
         default = 'cc',

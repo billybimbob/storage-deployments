@@ -46,9 +46,9 @@ async def main(
     master: Optional[str],
     master_port: Optional[int]):
 
-    redis_server = ['redis-server', conf]
-
     touch_log(log)
+
+    redis_server = ['redis-server', conf]
     redis_server += ['--logfile', log]
 
     if not sentinel and master and master_port:

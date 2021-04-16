@@ -22,7 +22,7 @@ class Log(NamedTuple):
 
 class Mongos(NamedTuple):
     port: int
-    host: str
+    members: List[str]
 
 class ReplInfo(NamedTuple):
     set_name: str
@@ -86,7 +86,7 @@ def initiate(info: ReplInfo, configsvr: bool):
 
 
 
-async def start_mongos(cluster: Cluster):
+async def start_mongos(mongos_idx: int, cluster: Cluster):
     log, mongos, configs, shards = cluster.as_tuple()
 
     verbosity = '-' + ''.join('v' for _ in range(log.verbosity))
@@ -97,7 +97,7 @@ async def start_mongos(cluster: Cluster):
     mongos_cmd += ['--logpath', log.path]
     mongos_cmd += ['--configdb', config_set]
     mongos_cmd += ['--port', str(mongos.port)]
-    mongos_cmd += ['--bind_ip', mongos.host]
+    mongos_cmd += ['--bind_ip', mongos.members[mongos_idx]]
 
     await asyncio.create_subprocess_exec(*mongos_cmd)
 
@@ -134,10 +134,10 @@ async def main(cluster: str, role: Mongot, member: Optional[int]):
     cluster_info = get_cluster(cluster)
 
     if role == 'mongos' and member is not None:
-        raise ValueError('mongos role received unexpected args')
+        await start_mongos(member, cluster_info)
 
     elif role == 'mongos':
-        await start_mongos(cluster_info)
+        raise ValueError('mongos needs the member specified')
 
     elif member:
         await create_replica(
