@@ -141,12 +141,12 @@ async def redis_start(user: str, ips: Addresses):
 
     for ip in ips.main:
         cmd = list(base)
-        cmd += ['-c', 'master.conf']
+        cmd += ['-c', f'{BASE_DIR}/redis/confs/master.conf']
         starts.append( Remote(ip, cmd) )
 
     for ip in ips.misc:
         cmd = list(base)
-        cmd += ['-c', 'sentinel.conf']
+        cmd += ['-c', f'{BASE_DIR}/redis/confs/sentinel.conf']
         cmd += ['-s']
         cmd += ['-m', ip]
         cmd += ['-p', str(master_node_port)]
@@ -154,7 +154,7 @@ async def redis_start(user: str, ips: Addresses):
 
     for ip in ips.data:
         cmd = list(base)
-        cmd += ['-c', 'slave.conf']
+        cmd += ['-c', f'{BASE_DIR}/redis/confs/slave.conf']
         cmd += ['-m', ip]
         cmd += ['-p', str(master_node_port)]
         starts.append( Remote(ip, cmd) )
@@ -165,7 +165,7 @@ async def redis_start(user: str, ips: Addresses):
 
 async def mongo_start(user: str, ips: Addresses):
     starts: List[Remote] = []
-    base = [f'./{MONGODB}/start.py', '-c', 'cluster.json']
+    base = [f'./{MONGODB}/start.py', '-c', f'{MONGODB}/cluster.json']
 
     for ip in ips.main:
         cmd = list(base)
