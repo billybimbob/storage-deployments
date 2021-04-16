@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
-from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import List, Literal, NamedTuple, Optional, Tuple, Union
+from typing import (
+    Iterable, List, Literal, NamedTuple, Optional, Tuple, Union)
 from pathlib import Path
 
 import asyncio as aio
@@ -10,7 +10,7 @@ import asyncio.subprocess as proc
 
 import argparse
 import json
-import os
+import logging
 import shlex
 
 
@@ -19,7 +19,7 @@ STORAGE_REPO = 'https://github.com/billybimbob/storage-deployments.git'
 STORAGE_FOLDER = Path(STORAGE_REPO).stem
 
 
-BASE_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = Path(STORAGE_FOLDER) / 'deployment'
 MONGODB = BASE_DIR / 'mongodb'
 REDIS = BASE_DIR / 'redis'
 
@@ -32,7 +32,7 @@ class ProcessOut(NamedTuple):
     err: str
 
     @staticmethod
-    def from_processs(std: Tuple[bytes, bytes]):
+    def from_process(std: Tuple[bytes, bytes]):
         return ProcessOut(*[s.decode() for s in std])
 
 
@@ -58,7 +58,9 @@ class Remote:
 
 
     def ssh(self, user: str) -> List[str]:
-        return shlex.split(f'ssh {user}@{self.ip} "{self.cmd}"')
+        cmd = shlex.split(f'ssh {user}@{self.ip}')
+        cmd.append(f"{self.cmd}")
+        return cmd
 
 
 class Result(NamedTuple):
@@ -78,8 +80,10 @@ class Addresses:
     data: List[str]
     misc: List[str]
 
-    def __bool__(self):
-        return self.main and self.data and self.misc
+    def __bool__(self) -> bool:
+        return (bool(self.main)
+            and bool(self.data)
+            and bool(self.misc))
 
     def __iter__(self):
         yield from self.main
@@ -100,15 +104,19 @@ class Addresses:
 
 async def exec_remotes(user: str, remotes: List[Remote]) -> List[Result]:
 
-    async def ssh_run(remote: Remote):
+    async def ssh_run(remote: Remote, run_num: int):
+        print(f'run: {run_num} running command {remote.ssh(user)}')
+
         ssh_proc = await aio.create_subprocess_exec(
             *remote.ssh(user), stdout=proc.PIPE, stderr=proc.PIPE)
 
         com = await ssh_proc.communicate()
-        return ProcessOut.from_processs(com)
+        print(f'run: {run_num} finished')
+
+        return ProcessOut.from_process(com)
 
     outputs = await aio.gather(
-        *[ ssh_run(remote) for remote in remotes ],
+        *[ ssh_run(remote, i) for i, remote in enumerate(remotes) ],
         return_exceptions=True)
 
     return [
@@ -129,7 +137,7 @@ async def run_ips(user: str, ips: Iterable[str], cmd: str) -> List[Result]:
 async def redis_start(user: str, ips: Addresses):
     master_node_port = 6379
     starts: List[Remote] = []
-    base = ['./start.py']
+    base = [f'./{REDIS}/start.py']
 
     for ip in ips.main:
         cmd = list(base)
@@ -157,7 +165,7 @@ async def redis_start(user: str, ips: Addresses):
 
 async def mongo_start(user: str, ips: Addresses):
     starts: List[Remote] = []
-    base = ['./start.py', '-c', 'cluster.json']
+    base = [f'./{MONGODB}/start.py', '-c', 'cluster.json']
 
     for ip in ips.main:
         cmd = list(base)
@@ -203,28 +211,25 @@ async def main(
     if not ips:
         return
 
-    # note: fixed number of slaves and sentials for redis 
-    # and fixed number of slaves for mongodb
-    # if database == "redis":
-    #     await redis_scp(ips, user, 1, 1)
+    # print(f'cloning repo for addrs {ips}')
 
-    # elif database == "mongodb":
-    #     await mongodb_scp(ips, user)
+    # clone = f'git clone {STORAGE_REPO}'
+    # results = await run_ips(user, ips, clone)
 
-    clone = f'git clone {STORAGE_REPO}'
-    results = await run_ips(user, ips, clone)
+    # failed = [ ip for ip, res in zip(ips, results) if res.is_error ]
 
-    failed = [ ip for ip, res in zip(ips, results) if res.is_error ]
-
-    if failed:
-        pull = f'cd {STORAGE_FOLDER} && git pull'
-        await run_ips(user, failed, pull)
+    # if failed:
+    #     print(f'pulling git for addrs {failed}')
+    #     pull = f'cd {STORAGE_FOLDER} && git pull'
+    #     await run_ips(user, failed, pull)
 
     if database == "redis":
+        print('starting redis daemons')
         results = await redis_start(user, ips)
         write_results(results, out)
     
     elif database == "mongodb":
+        print('starting mongo daemons')
         results = await mongo_start(user, ips)
         write_results(results, out)
 
