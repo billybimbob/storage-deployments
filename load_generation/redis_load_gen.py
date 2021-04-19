@@ -34,7 +34,7 @@ def add_read_operations(file: TextIOWrapper):
 
 
 def add_meta_operations(file:TextIOWrapper):
-    file.write(f'SET myhash {hash} "{generate_random_string(STRING_LEN)}"\n')
+    file.write(f'HSET myhash {hash} "{generate_random_string(STRING_LEN)}"\n')
 
 
 def create_operations(op: Operation, load: int):
