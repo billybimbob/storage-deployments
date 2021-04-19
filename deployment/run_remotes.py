@@ -21,6 +21,8 @@ STORAGE_FOLDER = PurePosixPath( PurePath(STORAGE_REPO).stem )
 DEPLOYMENT = STORAGE_FOLDER / 'deployment'
 LOGS = STORAGE_FOLDER / 'monitor_and_graphs' / 'logs'
 
+logger = logging.getLogger(__name__)
+
 
 Database = Literal['redis', 'mongodb']
 
@@ -46,7 +48,7 @@ class Addresses:
         if isinstance(path, str):
             path = Path(path)
 
-        path = path.with_suffix('.json') 
+        path = path.with_suffix('.json')
         with open(path, 'r') as f:
             ips = json.load(f)
             return Addresses(**ips)
@@ -57,16 +59,29 @@ class Remote:
     user: str
     ip: str
     cmd: str
+    iden: Optional[str]
 
     @property
     def ssh(self) -> List[str]:
-        return shlex.split(f'ssh {self.user}@{self.ip} {self.cmd}')
+        ssh_cmd = (
+            f'ssh -i {self.iden} {self.user}@{self.ip} {self.cmd}'
+            if self.iden else
+            f'ssh {self.user}@{self.ip} {self.cmd}')
+
+        return shlex.split(ssh_cmd)
+
 
     @staticmethod
     def valid_ip(ip: str):
         return len(ip.split(".")) == 4
 
-    def __init__(self, user: str, ip: str, cmd: Union[str, List[str]]):
+    def __init__(
+        self,
+        user: str,
+        ip: str,
+        cmd: Union[str, List[str]],
+        iden: Optional[str]=None):
+
         if not Remote.valid_ip(ip):
             raise ValueError('ip is not valid')
 
@@ -76,6 +91,7 @@ class Remote:
         self.user = user
         self.ip = ip
         self.cmd = cmd
+        self.iden = iden
 
 
 class Standards(NamedTuple):
@@ -101,22 +117,22 @@ class Result(NamedTuple):
 async def exec_commands(*commands: List[str]) -> List[Result]:
     """ Runs multiple commands with timeout, and wraps them in results """
 
-    async def process_exec(cmd: List[str], run_num: int):
-        logging.debug(f'run: {run_num} running command {cmd}')
+    async def process_exec(cmd: List[str], run_num: int) -> Standards:
+        logger.debug(f'run: {run_num} running command {cmd}')
 
         ssh_proc = await aio.create_subprocess_exec(
             *cmd, stdout=proc.PIPE, stderr=proc.PIPE)
 
-        logging.debug(f'run: {run_num} waiting')
+        logger.debug(f'run: {run_num} waiting')
 
         try:
             com = await aio.wait_for(ssh_proc.communicate(), 8)
-            logging.debug(f'run: {run_num} finished')
+            logger.debug(f'run: {run_num} finished')
 
             return Standards.from_process(com)
 
         except aio.TimeoutError:
-            logging.error(f'run: {run_num} took too long')
+            logger.error(f'run: {run_num} took too long')
             ssh_proc.kill()
             await ssh_proc.wait()
             raise
@@ -131,16 +147,20 @@ async def exec_commands(*commands: List[str]) -> List[Result]:
 
 
 
-async def run_ssh(cmd: str, user: str, *ips: str) -> List[Result]:
-    cmds = [ Remote(user, ip, cmd) for ip in ips ]
-    if not cmds:
-        return list()
+async def run_ssh(
+    cmd: str,
+    user: str,
+    *ips: str,
+    identity: Optional[str]=None) -> List[Result]:
 
+    cmds = [ Remote(user, ip, cmd, identity) for ip in ips ]
     return await exec_commands(*[ c.ssh for c in cmds ])
 
 
 
-async def redis_start(user: str, ips: Addresses) -> List[Result]:
+async def redis_start(
+    user: str, ips: Addresses, iden: Optional[str]=None) -> List[Result]:
+
     master_node_port = 6379
     redis = DEPLOYMENT / 'redis'
     r_log = LOGS / 'redis'
@@ -152,7 +172,7 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
         cmd = list(base)
         cmd += ['-l', f'{r_log}/master.log']
         cmd += ['-c', f'{redis}/confs/master.conf']
-        start_cmds.append( Remote(user, ip, cmd) )
+        start_cmds.append( Remote(user, ip, cmd, iden) )
 
     for ip in ips.misc:
         cmd = list(base)
@@ -161,7 +181,7 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
         cmd += ['-s']
         cmd += ['-m', ip]
         cmd += ['-p', str(master_node_port)]
-        start_cmds.append( Remote(user, ip, cmd) )
+        start_cmds.append( Remote(user, ip, cmd, iden) )
 
     for ip in ips.data:
         cmd = list(base)
@@ -169,23 +189,24 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
         cmd += ['-c', f'{redis}/confs/slave.conf']
         cmd += ['-m', ip]
         cmd += ['-p', str(master_node_port)]
-        start_cmds.append( Remote(user, ip, cmd) )
+        start_cmds.append( Remote(user, ip, cmd, iden) )
 
     return await exec_commands(*[ s.ssh for s in start_cmds ])
 
 
 
-async def mongo_start(user: str, ips: Addresses) -> List[Result]:
+async def mongo_start(
+    user: str, ips: Addresses, iden: Optional[str]=None) -> List[Result]:
+
     mongodb = DEPLOYMENT / 'mongodb'
     m_log = LOGS / 'mongodb'
-    
+
     # update cluster json
     cluster_loc = Path(__file__) / 'deployment' / 'cluster.json'
     with open(cluster_loc, 'r+') as f:
         cluster = json.load(f)
 
         cluster['log'].path = str(m_log)
-        # look into multiple mongos
         cluster['mongos'].members = ips.main
         cluster['configs'].members = ips.misc
         cluster['shards'].members = ips.data
@@ -195,28 +216,28 @@ async def mongo_start(user: str, ips: Addresses) -> List[Result]:
     scp = [ # should scp updated cluster
         shlex.split(f'scp {cluster_loc} {user}@{ip}:~/cluster.json')
         for ip in ips ]
-    
+
     scp_res = await exec_commands(*scp)
 
     start_cmds: List[Remote] = []
-    base = [f'./{mongodb}/start.py', '-c', f'{mongodb}/cluster.json']
+    base = [f'./{mongodb}/start.py', '-c', 'cluster.json']
 
     for ip in ips.main:
         cmd = list(base)
         cmd += ['-r', 'mongos']
-        start_cmds.append( Remote(user, ip, cmd) )
+        start_cmds.append( Remote(user, ip, cmd, iden) )
 
     for ip in ips.misc:
         cmd = list(base)
         cmd += ['-m', str(0)]
         cmd += ['-r', 'configs']
-        start_cmds.append( Remote(user, ip, cmd) )
+        start_cmds.append( Remote(user, ip, cmd, iden) )
 
     for ip in ips.data:
         cmd = list(base)
         cmd += ['-m', str(0)]
         cmd += ['-r', 'shards']
-        start_cmds.append( Remote(user, ip, cmd) )
+        start_cmds.append( Remote(user, ip, cmd, iden) )
 
     start_res = await exec_commands(*[ s.ssh for s in start_cmds ])
 
@@ -235,50 +256,66 @@ def write_results(results: List[Result], out: Optional[str] = None):
         with open(out, 'w') as f:
             f.write(res_info)
     else:
-        logging.debug(res_info)
+        logger.debug(res_info)
 
 
 
 async def run_starts(
-    ips: Addresses, user: str, database: Database, out: Optional[str]):
+    ips: Addresses,
+    user: str,
+    identity: Optional[str],
+    database: Database,
+    out: Optional[str]):
 
-    logging.debug(f'cloning repo for addrs {ips}')
+    logger.debug(f'cloning repo for addrs {ips}')
     clone = f'git clone {STORAGE_REPO}'
     results = await run_ssh(clone, user, *ips)
 
     failed = [ ip for ip, res in zip(ips, results) if res.is_error ]
 
     if failed:
-        logging.debug(f'pulling git for addrs {failed}')
+        logger.debug(f'pulling git for addrs {failed}')
         pull = f'cd {STORAGE_FOLDER} && git pull'
-        await run_ssh(pull, user, *failed)
+        await run_ssh(pull, user, *failed, identity=identity)
 
     if database == "redis":
-        logging.debug('starting redis daemons')
-        results = await redis_start(user, ips)
+        logger.debug('starting redis daemons')
+        results = await redis_start(user, ips, identity)
         write_results(results, out)
-    
+
     elif database == "mongodb":
-        logging.debug('starting mongo daemons')
-        results = await mongo_start(user, ips)
+        logger.debug('starting mongo daemons')
+        results = await mongo_start(user, ips, identity)
         write_results(results, out)
 
 
 
 async def run_shutdown(
-    ips: Addresses, user: str, database: Database, out: Optional[str]):
+    ips: Addresses,
+    user: str,
+    identity: Optional[str],
+    database: Database,
+    out: Optional[str]):
 
     # go reverse so that main nodes end last
     if database == 'redis':
-        logging.debug('stopping redis daemons')
+        logger.debug('stopping redis daemons')
         results = await run_ssh(
-            'redis-cli shutdown', user, *ips.data, *ips.misc, *ips.main)
+            'redis-cli shutdown',
+            user,
+            *ips.data, *ips.misc, *ips.main,
+            identity = identity)
+
         write_results(results, out)
 
     elif database == 'mongodb':
-        logging.debug('stopping mongo daemons')
+        logger.debug('stopping mongo daemons')
         results = await run_ssh( # mongos should also shutdown with this
-            'mongod --shutdown', user, *ips.data, *ips.misc, *ips.main)
+            'mongod --shutdown',
+            user,
+            *ips.data, *ips.misc, *ips.main,
+            identity = identity)
+
         write_results(results)
 
 
@@ -290,7 +327,7 @@ async def main(file: Optional[str], shutdown: bool, **run_args: Any):
     ips = Addresses.from_json(file)
 
     if not ips:
-        logging.info('no ips were found')
+        logger.info('no ips were found')
         return
 
     if not shutdown:
@@ -298,10 +335,11 @@ async def main(file: Optional[str], shutdown: bool, **run_args: Any):
     else:
         await run_shutdown(ips, **run_args)
 
-            
+
+
 if __name__ == "__main__":
     logging.getLogger('asyncio').setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.DEBUG)
+    logger.setLevel(logging.DEBUG)
 
     parse = argparse.ArgumentParser(
         description = 'runs the command on all ssh ips in the supplied file')
@@ -311,10 +349,13 @@ if __name__ == "__main__":
         choices = ['mongodb','redis'],
         help = 'select database')
 
+    parse.add_argument('-i', '--identity',
+        help = 'path to the ssh identity file')
+
     parse.add_argument('-f', '--file',
         help = 'file that contains the ips')
 
-    parse.add_argument('-o', '--out', 
+    parse.add_argument('-o', '--out',
         help = 'write output of ssh stdout to file')
 
     parse.add_argument('-s', '--shutdown',

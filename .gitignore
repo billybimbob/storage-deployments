@@ -1,6 +1,7 @@
 .devcontainer
 .vscode
 node*.conf
+load-output/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
