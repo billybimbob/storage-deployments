@@ -6,7 +6,9 @@
 
     "mongos": {
         "port": 27017,
-        "host": "<hostname>"
+        "member": [
+            "<hostname>"
+        ]
     },
 
     "configs": {
