@@ -5,7 +5,7 @@ import os
 import random
 import string
 
-output_path = f"{os.path.dirname(os.path.abspath(__file__))}/load_output/redis"
+output_path = f"{os.path.dirname(os.path.abspath(__file__))}/load-output/redis"
 
 STRING_LEN = 100
 letters = string.ascii_lowercase

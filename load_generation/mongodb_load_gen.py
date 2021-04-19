@@ -4,7 +4,7 @@ import os
 import random
 import string
 
-output_path = f"{os.path.dirname(os.path.abspath(__file__))}/load_output/mongodb"
+output_path = f"{os.path.dirname(os.path.abspath(__file__))}/load-output/mongodb"
 
 STRING_LEN = 100
 letters = string.ascii_lowercase
