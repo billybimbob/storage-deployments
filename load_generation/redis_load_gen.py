@@ -34,6 +34,7 @@ def add_read_operations(file: TextIOWrapper):
 
 
 def add_meta_operations(file:TextIOWrapper):
+    hash = generate_random_string(STRING_LEN)
     file.write(f'HSET myhash {hash} "{generate_random_string(STRING_LEN)}"\n')
 
 
