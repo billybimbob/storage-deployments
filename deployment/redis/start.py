@@ -30,7 +30,6 @@ class Sentinel(NamedTuple):
         raise ValueError('config file is missing values')
         
 
-
 def sentinel_monitor(conf: str, master: str, m_port: int):
     sent = Sentinel.from_conf(conf)
 

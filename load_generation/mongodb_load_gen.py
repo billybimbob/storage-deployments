@@ -25,14 +25,14 @@ def generate_random_string(length: int):
 def add_write_operations(file: TextIOWrapper):
     key = generate_random_string(STRING_LEN)
     keys.append(key)
-    file.write(f'WRITE {key} "{generate_random_string(STRING_LEN)}" \n')
+    file.write(f'INSERT {key} "{generate_random_string(STRING_LEN)}" \n')
 
 
 def add_read_operations(file: TextIOWrapper): 
     if not keys:
         raise RuntimeError("ERROR: No keys to GET")
 
-    file.write(f"GET {random.choice(keys)}\n")
+    file.write(f"FIND {random.choice(keys)}\n")
 
 
 def add_meta_operations(file: TextIOWrapper): 
