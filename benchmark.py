@@ -3,17 +3,18 @@
 from typing import Any, List, NamedTuple, Optional, cast
 from argparse import ArgumentParser
 from pathlib import Path
+from time import time
 
 from asyncio.subprocess import PIPE
 import asyncio as aio
 
-from time import time
 import json
 
 from pymongo import MongoClient
 from database import Database, STORAGE_FOLDER, run_ssh, write_results
+
 from load_generation.mongodb_load_gen import (
-    Command, KEY, Operation, LOAD_SIZES, LOADS, operation_json)
+    Command, KEY, Operation, LOAD_SIZES, generate, operation_json)
 
 
 
@@ -22,6 +23,7 @@ GEN_PATH = Path('load_generation')
 class Remote(NamedTuple):
     user: str
     address: str
+
 
 
 async def redis_bench(port: int, op: Operation, requests: int):
@@ -47,24 +49,13 @@ async def redis_bench(port: int, op: Operation, requests: int):
 
 
 
-async def mongo_loads():
-    if Path(LOADS).exists():
-        return
-
-    mongo_gen = GEN_PATH / 'mongodb_load_gen.py'
-    mongo_gen = f'./{mongo_gen}'
-
-    gen = await aio.create_subprocess_exec(mongo_gen, stdout=PIPE)
-    await gen.wait()
-
-
 def mongo_bench(port: int, op: Operation, size: int):
+    out = GEN_PATH / 'mongo-timestamps.txt'
     run_db = 'test-db'
     run_col = 'test-col1'
 
     with MongoClient(port=port) as cli:
         admin = cli['admin']
-        out = GEN_PATH / 'mongo-timestamps.txt'
 
         if not out.exists():
             monitor = admin.command("getFreeMonitoringStatus")
@@ -72,6 +63,7 @@ def mongo_bench(port: int, op: Operation, size: int):
                 f.write(f'monitoring state: {monitor}')
 
         if op == 'write':
+            # not sure if multiple calls is ok
             admin.command({"enableSharding": run_db})
             admin.command({
                 "shardCollection": f"{run_db}.{run_col}",
@@ -109,7 +101,7 @@ async def remote_check(ssh: Optional[Remote], database: Database, port: int):
         return
 
     if database == 'mongodb':
-        await mongo_loads()
+        generate(overwrite=False)
 
     for op in cast(List[Operation], ['write', 'read', 'meta']):
         for size in LOAD_SIZES:

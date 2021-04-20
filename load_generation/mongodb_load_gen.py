@@ -27,7 +27,7 @@ def generate_random_string(length: int):
 def add_write_operations(operations: List[Command]):
     val = generate_random_string(STRING_LEN)
     operations.append({
-        "insert": "",
+        "insert": "", # collection name specified later
         "documents": [{ KEY: val }]
     })
 
@@ -67,7 +67,10 @@ def create_operations(op: Operation, load: int):
 
 
 
-if __name__ == "__main__":
+def generate(overwrite: bool = True):
+    if os.path.exists(LOADS) and not overwrite:
+        return
+
     ops: List[Operation] = ['write', 'read', 'meta']
 
     if not os.path.isdir(LOADS):
@@ -76,3 +79,7 @@ if __name__ == "__main__":
     for t in ops:
         for load in LOAD_SIZES:
             create_operations(t, load)
+
+    
+if __name__ == '__main__':
+    generate()
