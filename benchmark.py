@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
 
-from typing import List, Literal, Optional, Tuple, cast
+from typing import Any, List, NamedTuple, Optional, cast
 from argparse import ArgumentParser
 from pathlib import Path
-# from pymongo import MongoClient
 
 from asyncio.subprocess import PIPE
 import asyncio as aio
 
+from time import time
+import json
+
+from pymongo import MongoClient
 from database import Database, STORAGE_FOLDER, run_ssh, write_results
+from load_generation.mongodb_load_gen import (
+    Command, KEY, Operation, LOAD_SIZES, LOADS, operation_json)
 
 
-Operation = Literal['write', 'read', 'meta']
-LOAD_SIZES = [1_000, 10_000, 100_000]
 
 GEN_PATH = Path('load_generation')
+
+class Remote(NamedTuple):
+    user: str
+    address: str
 
 
 async def redis_bench(port: int, op: Operation, requests: int):
@@ -39,48 +46,92 @@ async def redis_bench(port: int, op: Operation, requests: int):
     await run.wait()
 
 
-async def redis_run(port: int, ssh: Optional[Tuple[str, str]]):
+
+async def mongo_loads():
+    if Path(LOADS).exists():
+        return
+
+    mongo_gen = GEN_PATH / 'mongodb_load_gen.py'
+    mongo_gen = f'./{mongo_gen}'
+
+    gen = await aio.create_subprocess_exec(mongo_gen, stdout=PIPE)
+    await gen.wait()
+
+
+def mongo_bench(port: int, op: Operation, size: int):
+    run_db = 'test-db'
+    run_col = 'test-col1'
+
+    with MongoClient(port=port) as cli:
+        admin = cli['admin']
+        out = GEN_PATH / 'mongo-timestamps.txt'
+
+        if not out.exists():
+            monitor = admin.command("getFreeMonitoringStatus")
+            with open(out, 'w') as f:
+                f.write(f'monitoring state: {monitor}')
+
+        if op == 'write':
+            admin.command({"enableSharding": run_db})
+            admin.command({
+                "shardCollection": f"{run_db}.{run_col}",
+                "key": {KEY: "hashed"}
+            })
+
+        db = cli[run_db]
+        with open(operation_json(op, size)) as f:
+            cmds: List[Command] = json.load(f)
+
+        start = time()
+        for cmd in cmds:
+            if 'insert' in cmd:
+                cmd['insert'] = run_col
+
+            db.command(cmd)
+
+        end = time()
+        with open(out, 'r+') as f:
+            f.write(f'bench {op}: {size} started {start}, ended {end}')
+
+        if op == 'read':
+            db.drop_collection(run_col)
+
+
+
+async def remote_check(ssh: Optional[Remote], database: Database, port: int):
     if ssh:
         bench = STORAGE_FOLDER / 'benchmark.py'
-        res = await run_ssh(f'./{bench}', *ssh)
+        res = await run_ssh(
+            f'./{bench} -p {port} -d {database}',
+            ssh.user, ssh.address)
+
         write_results(res)
         return
 
+    if database == 'mongodb':
+        await mongo_loads()
+
     for op in cast(List[Operation], ['write', 'read', 'meta']):
         for size in LOAD_SIZES:
-            await redis_bench(port, op, size)
+
+            if database == 'redis':
+                await redis_bench(port, op, size)
+
+            elif database == 'mongodb':
+                mongo_bench(port, op, size)
 
 
 
-async def mongo_bench():
-    mongo_load = GEN_PATH / 'load-output' / 'mongodb'
-
-    if not mongo_load.exists():
-        mongo_gen = GEN_PATH / 'mongodb_load_gen.py'
-        mongo_gen = f'./{mongo_gen}'
-
-        gen = await aio.create_subprocess_exec(mongo_gen, stdout=PIPE)
-        await gen.wait()
-
-
-
-async def main(
-    database: Database,
-    port: int,
-    user: Optional[str],
-    addr: Optional[str]):
-
+async def main(user: Optional[str], addr: Optional[str], **kwargs: Any):
     ssh = None
     if user and addr:
-        ssh = user, addr
+        ssh = Remote(user, addr)
 
     elif user or addr:
         raise ValueError('only one of user or addr specified')
 
-    if database == 'redis':
-        await redis_run(port, ssh)
+    await remote_check(ssh, **kwargs)
 
-    # TODO: add mongo run
 
 
 if __name__ == '__main__':
@@ -91,7 +142,7 @@ if __name__ == '__main__':
         help = 'ssh address where database is')
 
     args.add_argument('-d', '--database',
-        default = 'redis',
+        required= True,
         choices = ['mongodb','redis'],
         help = 'datbase system that is being benchmarked')
 

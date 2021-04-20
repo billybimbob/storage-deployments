@@ -94,6 +94,7 @@ async def start_mongos(mongos_idx: int, cluster: Cluster):
     config_set = f"{configs.set_name}/{','.join(config_locs)}"
 
     mongos_cmd = ['monogos', verbosity]
+    mongos_cmd += ['--enableFreeMonitoring', 'on'] # should work for mongos
     mongos_cmd += ['--logpath', log.path]
     mongos_cmd += ['--configdb', config_set]
     mongos_cmd += ['--port', str(mongos.port)]
