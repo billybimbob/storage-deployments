@@ -2,6 +2,7 @@
 .vscode
 node*.conf
 load-output/
+*-mod.conf
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

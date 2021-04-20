@@ -4,7 +4,7 @@ from __future__ import annotations
 from argparse import ArgumentParser
 from dataclasses import asdict, astuple, dataclass
 from typing import (
-    Any, Dict, List, Literal, NamedTuple, Optional, Tuple, TypedDict, cast)
+    Any, Dict, List, Literal, Optional, Tuple, TypedDict, cast)
 
 from pymongo import MongoClient
 
@@ -12,19 +12,15 @@ import asyncio
 import json
 
 
-class Log(NamedTuple):
-    path: str
-    level: int
+Log = str
 
-    @property
-    def verbosity(self):
-        return max(1, min(self.level, 5))
-
-class Mongos(NamedTuple):
+@dataclass
+class Mongos:
     port: int
     members: List[str]
 
-class ReplInfo(NamedTuple):
+@dataclass
+class ReplInfo:
     set_name: str
     port: int
     members: List[str]
@@ -32,7 +28,7 @@ class ReplInfo(NamedTuple):
 
 Mongot = Literal['mongos', 'configs', 'shards']
 
-@dataclass(frozen=True)
+@dataclass
 class Cluster:
     log: Log
     mongos: Mongos
@@ -58,10 +54,8 @@ class Cluster:
 async def create_replica(
     mem_idx: int, info: ReplInfo, is_shard: bool, log: Log):
 
-    verbosity = '-' + ''.join('v' for _ in range(log.verbosity))
-
-    mongod_cmd = ['mongod', verbosity]
-    mongod_cmd += ['--logpath', log.path]
+    mongod_cmd = ['mongod']
+    mongod_cmd += ['--logpath', log]
     mongod_cmd += ['--shardsvr' if is_shard else '--configsvr']
     mongod_cmd += ['--replSet', info.set_name]
     mongod_cmd += ['--port', str(info.port)]
@@ -91,13 +85,11 @@ def initiate(info: ReplInfo, configsvr: bool):
 async def start_mongos(mongos_idx: int, cluster: Cluster):
     log, mongos, configs, shards = cluster.as_tuple()
 
-    verbosity = '-' + ''.join('v' for _ in range(log.verbosity))
     config_locs = [ f"{c}:{configs.port}" for c in configs.members ]
     config_set = f"{configs.set_name}/{','.join(config_locs)}"
 
-    mongos_cmd = ['monogos', verbosity]
-    mongos_cmd += ['--enableFreeMonitoring', 'on'] # should work for mongos
-    mongos_cmd += ['--logpath', log.path]
+    mongos_cmd = ['monogos']
+    mongos_cmd += ['--logpath', log]
     mongos_cmd += ['--configdb', config_set]
     mongos_cmd += ['--port', str(mongos.port)]
     mongos_cmd += ['--bind_ip', mongos.members[mongos_idx]]

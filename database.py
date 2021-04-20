@@ -197,7 +197,7 @@ async def mongo_start(user: str, ips: Addresses) -> List[Result]:
         cluster = json.load(f)
         cluster = Cluster(**cluster)
 
-        cluster.log.path = str(m_log)
+        cluster.log = str(m_log)
         cluster.mongos.members = ips.main
         cluster.configs.members = ips.misc
         cluster.shards.members = ips.data
@@ -333,7 +333,7 @@ if __name__ == "__main__":
                       'database nodes')
 
     parse.add_argument('-d', '--database',
-        default = 'redis',
+        required = True,
         choices = ['mongodb','redis'],
         help = 'datbase system that is being modified')
 
