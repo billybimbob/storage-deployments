@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 
+from typing import List, Literal
 from io import TextIOWrapper
+
 import os
 import random
 import string
-from typing import List, Literal
 
 
 Operation = Literal['write', 'read', 'meta']
+LOAD_SIZES = [1_000, 10_000, 100_000]
 
 output_path = f"{os.path.dirname(os.path.abspath(__file__))}/load-output/redis"
 
@@ -54,11 +56,10 @@ def create_operations(op: Operation, load: int):
 
 if __name__ == "__main__":
     ops: List[Operation] = ['write', 'read', 'meta']
-    load_sizes = [1000, 10000, 100000]
 
     if not os.path.isdir(output_path):
         os.makedirs(output_path)
 
     for t in ops:
-        for load in load_sizes:
+        for load in LOAD_SIZES:
             create_operations(t, load)

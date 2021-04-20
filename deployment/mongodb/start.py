@@ -101,6 +101,9 @@ async def start_mongos(mongos_idx: int, cluster: Cluster):
 
     await asyncio.create_subprocess_exec(*mongos_cmd)
 
+    # add shards might run too early, keep eye on
+    await asyncio.sleep(2)
+
     shard_locs = [ f"{s}:{shards.port}" for s in shards.members ]
     shard_set = {
         'addShard': f"{shards.set_name}/{','.join(shard_locs)}" }

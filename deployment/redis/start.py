@@ -3,33 +3,40 @@
 import asyncio
 from pathlib import Path
 
-from typing import Optional, Tuple, Union, cast
+from typing import NamedTuple, Optional, Union
 from argparse import ArgumentParser
 from redis import Redis
 
 
+class Sentinel(NamedTuple):
+    port: int
+    m_name: str
+
+    @classmethod
+    def from_conf(cls, conf: str):
+        port, m_name = [None] * 2
+
+        with open(conf) as f:
+            for line in f:
+                if 'port' in line:
+                    port = int(line.split()[-1])
+
+                elif 'monitor' in line:
+                    m_name = line.split()[2]
+
+        if port and m_name:
+            return cls(port, m_name)
+
+        raise ValueError('config file is missing values')
+        
+
 
 def sentinel_monitor(conf: str, master: str, m_port: int):
-    auth = get_master_auth(conf)
-    if auth is None:
-        raise ValueError('master auth info missing specified')
+    sent = Sentinel.from_conf(conf)
 
-    m_name, m_pass = auth
-    with Redis(password=m_pass) as cli:
-        cli.sentinel_monitor(m_name, master, m_port, 2)
+    with Redis(port=sent.port) as cli:
+        cli.sentinel_monitor(sent.m_name, master, m_port, 2)
 
-
-
-def get_master_auth(conf: str) -> Optional[Tuple[str, str]]:
-    # expects sentinel auth-pass name cloudpass
-    with open(conf) as f:
-        for line in f:
-            if 'auth-pass' not in line:
-                continue
-                
-            return cast(
-                Tuple[str, str],
-                tuple(line.split()[-2:]))
 
 
 def touch_log(log: Union[Path, str]):
@@ -61,6 +68,8 @@ async def main(
     await asyncio.create_subprocess_exec(*redis_server)
 
     if sentinel and master and master_port:
+        await asyncio.sleep(2)
+        # might run too early
         sentinel_monitor(conf, master, master_port)
 
 

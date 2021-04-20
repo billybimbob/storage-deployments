@@ -9,6 +9,7 @@ import string
 
 
 Operation = Literal['write', 'read', 'meta']
+LOAD_SIZES = [1000, 10000, 100000]
 
 output_path = f"{os.path.dirname(os.path.abspath(__file__))}/load-output/mongodb"
 
@@ -53,12 +54,11 @@ def create_operations(op: Operation, load: int):
 
 
 if __name__ == "__main__":
-    load_sizes = [1000, 10000, 100000]
     ops: List[Operation] = ['write', 'read', 'meta']
 
     if not os.path.isdir(output_path):
         os.makedirs(output_path)
 
     for t in ops:
-        for load in load_sizes:
+        for load in LOAD_SIZES:
             create_operations(t, load)

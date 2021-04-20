@@ -13,6 +13,8 @@ import json
 import logging
 import shlex
 
+from deployment.mongodb.start import Cluster
+
 
 STORAGE_REPO = 'https://github.com/billybimbob/storage-deployments.git'
 # use path to parse / and extensions
@@ -32,6 +34,17 @@ class Addresses:
     data: List[str]
     misc: List[str]
 
+    @classmethod
+    def from_json(cls, path: Union[str, Path]):
+        if isinstance(path, str):
+            path = Path(path)
+
+        path = path.with_suffix('.json')
+        with open(path, 'r') as f:
+            ips = json.load(f)
+            return cls(**ips)
+
+
     def __bool__(self) -> bool:
         return (bool(self.main)
             and bool(self.data)
@@ -43,46 +56,19 @@ class Addresses:
         yield from self.misc
 
 
-    @staticmethod
-    def from_json(path: Union[str, Path]):
-        if isinstance(path, str):
-            path = Path(path)
-
-        path = path.with_suffix('.json')
-        with open(path, 'r') as f:
-            ips = json.load(f)
-            return Addresses(**ips)
-
-
 @dataclass(init=False)
 class Remote:
     user: str
     ip: str
     cmd: str
-    iden: Optional[str]
-
-    @property
-    def ssh(self) -> List[str]:
-        ssh_cmd = (
-            f'ssh -i {self.iden} {self.user}@{self.ip} {self.cmd}'
-            if self.iden else
-            f'ssh {self.user}@{self.ip} {self.cmd}')
-
-        return shlex.split(ssh_cmd)
-
-
-    @staticmethod
-    def valid_ip(ip: str):
-        return len(ip.split(".")) == 4
 
     def __init__(
         self,
         user: str,
         ip: str,
-        cmd: Union[str, List[str]],
-        iden: Optional[str]=None):
+        cmd: Union[str, List[str]]):
 
-        if not Remote.valid_ip(ip):
+        if not self.valid_ip(ip):
             raise ValueError('ip is not valid')
 
         if isinstance(cmd, list):
@@ -91,16 +77,26 @@ class Remote:
         self.user = user
         self.ip = ip
         self.cmd = cmd
-        self.iden = iden
+
+
+    @staticmethod
+    def valid_ip(ip: str):
+        return len(ip.split(".")) == 4
+
+
+    @property
+    def ssh(self) -> List[str]:
+        ssh_cmd = f'ssh {self.user}@{self.ip} {self.cmd}'
+        return shlex.split(ssh_cmd)
 
 
 class Standards(NamedTuple):
     out: str
     err: str
 
-    @staticmethod
-    def from_process(std: Tuple[bytes, bytes]):
-        return Standards(*[ s.decode() for s in std ])
+    @classmethod
+    def from_process(cls, std: Tuple[bytes, bytes]):
+        return cls(*[ s.decode() for s in std ])
 
 
 class Result(NamedTuple):
@@ -147,19 +143,13 @@ async def exec_commands(*commands: List[str]) -> List[Result]:
 
 
 
-async def run_ssh(
-    cmd: str,
-    user: str,
-    *ips: str,
-    identity: Optional[str]=None) -> List[Result]:
-
-    cmds = [ Remote(user, ip, cmd, identity) for ip in ips ]
+async def run_ssh(cmd: str, user: str, *ips: str) -> List[Result]:
+    cmds = [ Remote(user, ip, cmd) for ip in ips ]
     return await exec_commands(*[ c.ssh for c in cmds ])
 
 
 
-async def redis_start(
-    user: str, ips: Addresses, iden: Optional[str]=None) -> List[Result]:
+async def redis_start(user: str, ips: Addresses) -> List[Result]:
 
     master_node_port = 6379
     redis = DEPLOYMENT / 'redis'
@@ -172,7 +162,7 @@ async def redis_start(
         cmd = list(base)
         cmd += ['-l', f'{r_log}/master.log']
         cmd += ['-c', f'{redis}/confs/master.conf']
-        start_cmds.append( Remote(user, ip, cmd, iden) )
+        start_cmds.append( Remote(user, ip, cmd) )
 
     for ip in ips.misc:
         cmd = list(base)
@@ -181,7 +171,7 @@ async def redis_start(
         cmd += ['-s']
         cmd += ['-m', ip]
         cmd += ['-p', str(master_node_port)]
-        start_cmds.append( Remote(user, ip, cmd, iden) )
+        start_cmds.append( Remote(user, ip, cmd) )
 
     for ip in ips.data:
         cmd = list(base)
@@ -189,14 +179,13 @@ async def redis_start(
         cmd += ['-c', f'{redis}/confs/slave.conf']
         cmd += ['-m', ip]
         cmd += ['-p', str(master_node_port)]
-        start_cmds.append( Remote(user, ip, cmd, iden) )
+        start_cmds.append( Remote(user, ip, cmd) )
 
     return await exec_commands(*[ s.ssh for s in start_cmds ])
 
 
 
-async def mongo_start(
-    user: str, ips: Addresses, iden: Optional[str]=None) -> List[Result]:
+async def mongo_start(user: str, ips: Addresses) -> List[Result]:
 
     mongodb = DEPLOYMENT / 'mongodb'
     m_log = LOGS / 'mongodb'
@@ -205,11 +194,12 @@ async def mongo_start(
     cluster_loc = Path(__file__) / 'deployment' / 'cluster.json'
     with open(cluster_loc, 'r+') as f:
         cluster = json.load(f)
+        cluster = Cluster(**cluster)
 
-        cluster['log'].path = str(m_log)
-        cluster['mongos'].members = ips.main
-        cluster['configs'].members = ips.misc
-        cluster['shards'].members = ips.data
+        cluster.log.path = str(m_log)
+        cluster.mongos.members = ips.main
+        cluster.configs.members = ips.misc
+        cluster.shards.members = ips.data
 
         json.dump(cluster, f, indent=4)
 
@@ -225,19 +215,19 @@ async def mongo_start(
     for ip in ips.main:
         cmd = list(base)
         cmd += ['-r', 'mongos']
-        start_cmds.append( Remote(user, ip, cmd, iden) )
+        start_cmds.append( Remote(user, ip, cmd) )
 
     for ip in ips.misc:
         cmd = list(base)
         cmd += ['-m', str(0)]
         cmd += ['-r', 'configs']
-        start_cmds.append( Remote(user, ip, cmd, iden) )
+        start_cmds.append( Remote(user, ip, cmd) )
 
     for ip in ips.data:
         cmd = list(base)
         cmd += ['-m', str(0)]
         cmd += ['-r', 'shards']
-        start_cmds.append( Remote(user, ip, cmd, iden) )
+        start_cmds.append( Remote(user, ip, cmd) )
 
     start_res = await exec_commands(*[ s.ssh for s in start_cmds ])
 
@@ -263,7 +253,6 @@ def write_results(results: List[Result], out: Optional[str] = None):
 async def run_starts(
     ips: Addresses,
     user: str,
-    identity: Optional[str],
     database: Database,
     out: Optional[str]):
 
@@ -276,16 +265,16 @@ async def run_starts(
     if failed:
         logger.debug(f'pulling git for addrs {failed}')
         pull = f'cd {STORAGE_FOLDER} && git pull'
-        await run_ssh(pull, user, *failed, identity=identity)
+        await run_ssh(pull, user, *failed)
 
     if database == "redis":
         logger.debug('starting redis daemons')
-        results = await redis_start(user, ips, identity)
+        results = await redis_start(user, ips)
         write_results(results, out)
 
     elif database == "mongodb":
         logger.debug('starting mongo daemons')
-        results = await mongo_start(user, ips, identity)
+        results = await mongo_start(user, ips)
         write_results(results, out)
 
 
@@ -293,7 +282,6 @@ async def run_starts(
 async def run_shutdown(
     ips: Addresses,
     user: str,
-    identity: Optional[str],
     database: Database,
     out: Optional[str]):
 
@@ -303,8 +291,7 @@ async def run_shutdown(
         results = await run_ssh(
             'redis-cli shutdown',
             user,
-            *ips.data, *ips.misc, *ips.main,
-            identity = identity)
+            *ips.data, *ips.misc, *ips.main)
 
         write_results(results, out)
 
@@ -313,8 +300,7 @@ async def run_shutdown(
         results = await run_ssh( # mongos should also shutdown with this
             'mongod --shutdown',
             user,
-            *ips.data, *ips.misc, *ips.main,
-            identity = identity)
+            *ips.data, *ips.misc, *ips.main)
 
         write_results(results)
 
@@ -342,18 +328,16 @@ if __name__ == "__main__":
     logger.setLevel(logging.DEBUG)
 
     parse = argparse.ArgumentParser(
-        description = 'runs the command on all ssh ips in the supplied file')
+        description = 'runs the start and shutdown commands for '
+                      'database nodes')
 
     parse.add_argument('-d', '--database',
         default = 'redis',
         choices = ['mongodb','redis'],
-        help = 'select database')
-
-    parse.add_argument('-i', '--identity',
-        help = 'path to the ssh identity file')
+        help = 'datbase system that is being modified')
 
     parse.add_argument('-f', '--file',
-        help = 'file that contains the ips')
+        help = 'file that contains database node locations')
 
     parse.add_argument('-o', '--out',
         help = 'write output of ssh stdout to file')
