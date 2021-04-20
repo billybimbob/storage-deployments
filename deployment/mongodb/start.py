@@ -4,7 +4,7 @@ from __future__ import annotations
 from argparse import ArgumentParser
 from dataclasses import asdict, astuple, dataclass
 from typing import (
-    Any, List, Literal, NamedTuple, Optional, Tuple, TypedDict, cast)
+    Any, Dict, List, Literal, NamedTuple, Optional, Tuple, TypedDict, cast)
 
 from pymongo import MongoClient
 
@@ -72,15 +72,17 @@ async def create_replica(
 
 
 def initiate(info: ReplInfo, configsvr: bool):
-    # just use first member host by defaut
+    # just use first member host by default
     with MongoClient(info.members[0], info.port) as cli:
-        config = {
+        config: Dict[str, Any] = {
             '_id': info.set_name,
-            'configsvr': configsvr,
             'members': [
                 {'_id': i, 'host': f'{m}:{info.port}'}
                 for i, m in enumerate(info.members) ]
         }
+
+        if configsvr:
+            config['configsvr'] = True
 
         cli['admin'].command("replSetInitiate", config)
 
@@ -105,9 +107,8 @@ async def start_mongos(mongos_idx: int, cluster: Cluster):
     # add shards might run too early, keep eye on
     await asyncio.sleep(2)
 
-    shard_locs = [ f"{s}:{shards.port}" for s in shards.members ]
-    shard_set = {
-        'addShard': f"{shards.set_name}/{','.join(shard_locs)}" }
+    shard_set = [ f"{s}:{shards.port}" for s in shards.members ]
+    shard_set = f"{shards.set_name}/{','.join(shard_set)}"
 
     with MongoClient('localhost', mongos.port) as cli:
         cli['admin'].command("addShard", shard_set)

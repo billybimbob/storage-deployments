@@ -26,8 +26,8 @@ class Sentinel(NamedTuple):
 
         if port and m_name:
             return cls(port, m_name)
-
-        raise ValueError('config file is missing values')
+        else:
+            raise ValueError('config file is missing values')
         
 
 def sentinel_monitor(conf: str, master: str, m_port: int):
@@ -42,7 +42,7 @@ def touch_log(log: Union[Path, str]):
     log = Path(log)
     log.parent.mkdir(exist_ok=True, parents=True)
     if not log.exists():
-        with open(log, 'x') as _: pass
+        with open(log, 'x'): pass
 
 
 async def main(
@@ -58,7 +58,7 @@ async def main(
     redis_server += ['--logfile', log]
 
     if not sentinel and master and master_port:
-        redis_server.extend(['--slaveof', master, str(master_port)])
+        redis_server += ['--slaveof', master, str(master_port)]
 
     elif sentinel and master and master_port:
         redis_server.append('--sentinel')

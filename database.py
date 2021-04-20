@@ -42,7 +42,8 @@ class Addresses:
         path = path.with_suffix('.json')
         with open(path, 'r') as f:
             ips = json.load(f)
-            return cls(**ips)
+
+        return cls(**ips)
 
 
     def __bool__(self) -> bool:

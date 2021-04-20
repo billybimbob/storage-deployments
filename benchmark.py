@@ -30,18 +30,18 @@ async def redis_bench(port: int, op: Operation, requests: int):
     out = GEN_PATH / 'redis-bench' / f'{op}_{requests}_times.txt'
     out.mkdir(exist_ok=True, parents=True)
 
-    bench = ['redis-benchmark', '-p', str(port)]
-    bench.extend(['-c', str(1), '-n', str(requests)])
-    bench.extend(['--csv', '-q' '-d', str(20)])
+    bench = ['redis-benchmark']
+    bench += ['-p', str(port)]
+    bench += ['-c', str(1)]
+    bench += ['-n', str(requests)]
+    bench += ['-d', str(20)]
+    bench += ['--csv']
 
-    if op == 'write':
-        bench.extend(['-t', 'set'])
-    elif op == 'read':
-        bench.extend(['-t', 'get'])
-    elif op == 'meta':
-        bench.extend(['-t', 'hset'])
+    if op == 'write':  bench += ['-t', 'set']
+    elif op == 'read': bench += ['-t', 'get']
+    elif op == 'meta': bench += ['-t', 'hset']
 
-    bench.extend(['>', str(out)])
+    bench += ['>', str(out)]
     bench = ' '.join(bench)
 
     run = await aio.create_subprocess_shell(bench, stdout=PIPE)
@@ -64,11 +64,10 @@ def mongo_bench(port: int, op: Operation, size: int):
 
         if op == 'write':
             # not sure if multiple calls is ok
-            admin.command({"enableSharding": run_db})
-            admin.command({
-                "shardCollection": f"{run_db}.{run_col}",
-                "key": {KEY: "hashed"}
-            })
+            admin.command("enableSharding", run_db)
+            admin.command(
+                "shardCollection", f"{run_db}.{run_col}",
+                key = { KEY: "hashed" })
 
         db = cli[run_db]
         with open(operation_json(op, size)) as f:
