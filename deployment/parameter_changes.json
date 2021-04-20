@@ -1,0 +1,12 @@
+{ 
+    "redis": {
+        "maxmemory" : [1,2,4],
+        "save" : [[1,1],[60,10],[120,10],[300,10]],
+        "repl-diskless-sync": ["yes","no"]
+    },
+    "mongodb": {
+        "storage.wiredTiger.engineConfig.cacheSizeGB" : [2,4,16],
+        "storage.inMemory.engineConfig.inMemorySizeGB" : [8,16,32],
+        "net.serviceExecutor" : ["synchronous","adaptive"]
+    }
+}
