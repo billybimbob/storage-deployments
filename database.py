@@ -122,21 +122,21 @@ async def exec_commands(*commands: List[str]) -> List[Result]:
     async def process_exec(cmd: List[str], run_num: int) -> Standards:
         logger.debug(f'run: {run_num} running command {cmd}')
 
-        ssh_proc = await aio.create_subprocess_exec(
+        sub_proc = await aio.create_subprocess_exec(
             *cmd, stdout=proc.PIPE, stderr=proc.PIPE)
 
         logger.debug(f'run: {run_num} waiting')
 
         try:
-            com = await aio.wait_for(ssh_proc.communicate(), 8)
+            com = await aio.wait_for(sub_proc.communicate(), 8)
             logger.debug(f'run: {run_num} finished')
 
             return Standards.from_process(com)
 
         except aio.TimeoutError:
             logger.error(f'run: {run_num} took too long')
-            ssh_proc.kill()
-            await ssh_proc.wait()
+            sub_proc.kill()
+            await sub_proc.wait()
             raise
 
     outputs = await aio.gather(
@@ -165,7 +165,7 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
     r_log = STORAGE_FOLDER / LOGS / 'redis'
 
     start_cmds: List[Remote] = []
-    base = [f'./{redis}/start.py']
+    cmd_base = [f'./{redis}/start.py']
 
     self_loc = socket.gethostbyname(socket.gethostname())
 
@@ -179,13 +179,17 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
         if ip == self_loc:
             continue
 
-        cmd = list(base)
+        cmd = list(cmd_base)
         cmd += ['-l', f'{r_log}/master.log']
         cmd += ['-c', 'master.conf']
         start_cmds.append( Remote(user, ip, cmd) )
+        
+    # ensure master starts before other nodes
+    results = await exec_commands(*[ s.ssh for s in start_cmds ])
+    start_cmds.clear()
 
     for ip in ips.misc:
-        cmd = list(base)
+        cmd = list(cmd_base)
         cmd += ['-l', f'{r_log}/sentinel.log']
         cmd += ['-c', 'sentinel.conf']
         cmd += ['-s']
@@ -194,24 +198,47 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
         start_cmds.append( Remote(user, ip, cmd) )
 
     for ip in ips.data:
-        cmd = list(base)
+        cmd = list(cmd_base)
         cmd += ['-l', f'{r_log}/slave.log']
         cmd += ['-c', 'slave.conf']
         cmd += ['-m', random.choice(ips.main)]
         cmd += ['-p', str(master_node_port)]
         start_cmds.append( Remote(user, ip, cmd) )
 
-    return await exec_commands(*[ s.ssh for s in start_cmds ])
+    results += await exec_commands(*[ s.ssh for s in start_cmds ])
+
+    return results
 
 
 
 async def mongo_start(user: str, ips: Addresses) -> List[Result]:
 
-    mongodb = STORAGE_FOLDER / DEPLOYMENT / 'mongodb'
+    cluster_loc = DEPLOYMENT / 'cluster.json'
+    cluster = update_cluster(cluster_loc, ips)
+
+    self_loc = socket.gethostbyname(socket.gethostname())
+
+    scp = [ # should scp updated cluster
+        shlex.split(f'scp {cluster_loc} {user}@{ip}:~/cluster.json')
+        for ip in ips
+        if ip != self_loc ]
+
+    results = await exec_commands(*scp)
+    results += await mongo_remotes(user, self_loc, ips)
+
+    if self_loc in ips.main:
+        mongos_conf = DEPLOYMENT / 'mongodb' / 'confs' / 'mongos.conf'
+        mongos_conf = mongos_conf.with_name( mod_name(mongos_conf) )
+        # run locally, no resulting output
+        await start_mongos(
+            ips.main.index(self_loc), str(mongos_conf), cluster)
+
+    return results
+
+
+def update_cluster(cluster_loc: Path, ips: Addresses) -> Cluster:
     m_log = STORAGE_FOLDER / LOGS / 'mongodb'
 
-    # update cluster json
-    cluster_loc = Path(__file__) / 'deployment' / 'cluster.json'
     with open(cluster_loc, 'r+') as f:
         cluster = json.load(f)
         cluster = Cluster(**cluster)
@@ -223,63 +250,58 @@ async def mongo_start(user: str, ips: Addresses) -> List[Result]:
 
         json.dump(cluster, f, indent=4)
 
-    self_loc = socket.gethostbyname(socket.gethostname())
+    return cluster
 
-    scp = [ # should scp updated cluster
-        shlex.split(f'scp {cluster_loc} {user}@{ip}:~/cluster.json')
-        for ip in ips
-        if ip != self_loc ]
 
-    results = await exec_commands(*scp)
-
+async def mongo_remotes(user: str, self_loc: str, ips: Addresses):
     start_cmds: List[Remote] = []
-    base = [f'./{mongodb}/start.py', '-c', 'cluster.json']
 
-    for i, ip in enumerate(ips.main):
-        if ip == self_loc:
-            continue
-
-        cmd = list(base)
-        cmd += ['-r', 'mongos']
-        cmd += ['-m', str(i)]
-        cmd += ['-c', 'mongos.conf'] # should be top level from scp
-        start_cmds.append( Remote(user, ip, cmd) )
+    mongodb = STORAGE_FOLDER / DEPLOYMENT / 'mongodb'
+    cmd_base = [f'./{mongodb}/start.py', '-c', 'cluster.json']
 
     for i, ip in enumerate(ips.misc):
-        cmd = list(base)
+        cmd = list(cmd_base)
         cmd += ['-r', 'configs']
         cmd += ['-m', str(i)]
         start_cmds.append( Remote(user, ip, cmd) )
 
     for i, ip in enumerate(ips.data):
-        cmd = list(base)
+        cmd = list(cmd_base)
         cmd += ['-r', 'shards']
         cmd += ['-m', str(i)]
         start_cmds.append( Remote(user, ip, cmd) )
 
-    results += await exec_commands(*[ s.ssh for s in start_cmds ])
+    results = await exec_commands(*[ s.ssh for s in start_cmds ])
 
     # add initiate cmds
     start_cmds.clear()
 
     if ips.misc:
-        cmd = list(base)
+        cmd = list(cmd_base)
         cmd += ['-r', 'configs']
         start_cmds.append( Remote(user, ips.misc[0], cmd) )
 
     if ips.data:
-        cmd = list(base)
+        cmd = list(cmd_base)
         cmd += ['-r', 'shards']
         start_cmds.append( Remote(user, ips.data[0], cmd) )
 
     results += await exec_commands(*[ s.ssh for s in start_cmds ])
 
-    if self_loc in ips.main:
-        mongos_conf = DEPLOYMENT / 'mongodb' / 'confs' / 'mongos.conf'
-        mongos_conf = mongos_conf.with_name( mod_name(mongos_conf) )
-        # run locally, no resulting output
-        await start_mongos(
-            ips.main.index(self_loc), str(mongos_conf), cluster)
+    # make sure mongos starts after repl init ran
+    start_cmds.clear()
+
+    for i, ip in enumerate(ips.main):
+        if ip == self_loc:
+            continue
+
+        cmd = list(cmd_base)
+        cmd += ['-r', 'mongos']
+        cmd += ['-m', str(i)]
+        cmd += ['-c', 'mongos.conf'] # should be top level from scp
+        start_cmds.append( Remote(user, ip, cmd) )
+
+    results += await exec_commands(*[ s.ssh for s in start_cmds ])
 
     return results
 
