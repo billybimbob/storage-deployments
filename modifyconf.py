@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 
 
+
 def new_config(source: str):
     return f'{Path(source).stem}-mod.conf'
 
@@ -35,9 +36,11 @@ def modify_redis(source: str, param: str, value: Any):
     if not set_param:
         redis_params.append(f'{param} {value}')
 
-    with open(new_config(source), 'w') as f:
+    mod_config_path = str(Path(__file__).parent / 'deployment' / 'redis' / 'confs' / new_config(source))
+    with open(mod_config_path, 'w') as f:
         f.write(''.join(redis_params))
-
+    
+    return mod_config_path
 
 
 def modify_mongo(source: str, param: str, value: Any):
@@ -56,8 +59,11 @@ def modify_mongo(source: str, param: str, value: Any):
 
     param_ref[param_key] = value
 
-    with open(new_config(source), 'w') as f:
+    mod_config_path = str(Path(__file__).parent / 'deployment' / 'mongodb' / 'configs' / new_config(source))
+    with open(mod_config_path, 'w') as f:
         json.dump(configs, f, indent=4)
+    
+    return mod_config_path
 
 
 if __name__ == '__main__':
