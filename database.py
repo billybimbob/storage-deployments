@@ -16,7 +16,7 @@ import random
 import shlex
 import socket
 
-from deployment.modifyconf import mod_name
+from deployment.modifyconf import mongo_conf, redis_conf
 from deployment.redis.start import Configs, init_server
 from deployment.mongodb.start import Cluster, start_mongos
 
@@ -32,6 +32,14 @@ logger = logging.getLogger(__name__)
 
 
 Database = Literal['redis', 'mongodb']
+
+
+def is_selfhost(ip: str):
+    self_host = socket.gethostbyaddr(socket.gethostname())[-1]
+    ip_addrs = socket.gethostbyaddr(ip)[-1]
+
+    return any(ip in self_host for ip in ip_addrs)
+
 
 @dataclass
 class Addresses:
@@ -84,11 +92,9 @@ class Remote:
         self.ip = ip
         self.cmd = cmd
 
-
     @staticmethod
     def valid_ip(ip: str):
         return len(ip.split(".")) == 4
-
 
     @property
     def ssh(self) -> List[str]:
@@ -117,7 +123,7 @@ class Result(NamedTuple):
 
 
 async def exec_commands(*commands: List[str]) -> List[Result]:
-    """ Runs multiple commands with timeout, and wraps them in results """
+    " Runs multiple commands with timeout, and wraps them in results "
 
     async def process_exec(cmd: List[str], run_num: int) -> Standards:
         logger.debug(f'run: {run_num} running command {cmd}')
@@ -126,12 +132,9 @@ async def exec_commands(*commands: List[str]) -> List[Result]:
             *cmd, stdout=proc.PIPE, stderr=proc.PIPE)
 
         logger.debug(f'run: {run_num} waiting')
-
         try:
             com = await aio.wait_for(sub_proc.communicate(), 8)
             logger.debug(f'run: {run_num} finished')
-
-            return Standards.from_process(com)
 
         except aio.TimeoutError:
             logger.error(f'run: {run_num} took too long')
@@ -139,24 +142,35 @@ async def exec_commands(*commands: List[str]) -> List[Result]:
             await sub_proc.wait()
             raise
 
+        else:
+            return Standards.from_process(com)
+
+
     outputs = await aio.gather(
-        *[ process_exec(cmd, i+1) for i, cmd in enumerate(commands) ],
+        *[process_exec(cmd, i+1) for i, cmd in enumerate(commands)],
         return_exceptions=True)
 
     return [
-        Result(*rem_out)
-        for rem_out in zip(commands, outputs) ]
+        Result(cmd, out)
+        for cmd, out in zip(commands, outputs) ]
 
 
 
 async def run_ssh(cmd: str, user: str, *ips: str) -> List[Result]:
-    cmds = [ Remote(user, ip, cmd) for ip in ips ]
-    return await exec_commands(*[ c.ssh for c in cmds ])
+    remotes = [
+        Remote(user, ip, cmd)
+        for ip in ips if not is_selfhost(ip) ]
+
+    cmds = [ c.ssh for c in remotes ]
+    if any( is_selfhost(ip) for ip in ips ):
+        cmds.append(shlex.split(cmd))
+
+    return await exec_commands(*cmds)
 
 
 
 async def redis_start(user: str, ips: Addresses) -> List[Result]:
-    master_conf = DEPLOYMENT / 'redis' / 'confs' / 'master.conf'
+    master_conf = DEPLOYMENT / redis_conf('master.conf')
     conf_info = Configs.from_file(master_conf)
 
     master_node_port = conf_info.port
@@ -167,16 +181,14 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
     start_cmds: List[Remote] = []
     cmd_base = [f'./{redis}/start.py']
 
-    self_loc = socket.gethostbyname(socket.gethostname())
-
-    if self_loc in ips.main:
-        conf = master_conf.with_name( mod_name(master_conf) )
+    # local addr can potentially be a main addr
+    if any( is_selfhost(ip) for ip in ips.main ):
         log = LOGS / 'redis' / 'master.log'
         # run locally, no out info
-        await init_server(str(conf), str(log))
+        await init_server(str(master_conf), str(log))
 
     for ip in ips.main:
-        if ip == self_loc:
+        if is_selfhost(ip):
             continue
 
         cmd = list(cmd_base)
@@ -216,22 +228,22 @@ async def mongo_start(user: str, ips: Addresses) -> List[Result]:
     cluster_loc = DEPLOYMENT / 'cluster.json'
     cluster = update_cluster(cluster_loc, ips)
 
-    self_loc = socket.gethostbyname(socket.gethostname())
-
     scp = [ # should scp updated cluster
         shlex.split(f'scp {cluster_loc} {user}@{ip}:~/cluster.json')
         for ip in ips
-        if ip != self_loc ]
+        if not is_selfhost(ip) ]
 
     results = await exec_commands(*scp)
-    results += await mongo_remotes(user, self_loc, ips)
+    results += await mongo_remotes(user, ips)
 
-    if self_loc in ips.main:
-        mongos_conf = DEPLOYMENT / 'mongodb' / 'confs' / 'mongos.conf'
-        mongos_conf = mongos_conf.with_name( mod_name(mongos_conf) )
+    # local addr can potentially be a main addr
+    for i, ip in enumerate(ips.main):
+        if not is_selfhost(ip):
+            continue
+
+        mongos_conf = DEPLOYMENT / mongo_conf('mongos.conf')
         # run locally, no resulting output
-        await start_mongos(
-            ips.main.index(self_loc), str(mongos_conf), cluster)
+        await start_mongos(i, str(mongos_conf), cluster)
 
     return results
 
@@ -253,7 +265,7 @@ def update_cluster(cluster_loc: Path, ips: Addresses) -> Cluster:
     return cluster
 
 
-async def mongo_remotes(user: str, self_loc: str, ips: Addresses):
+async def mongo_remotes(user: str, ips: Addresses):
     start_cmds: List[Remote] = []
 
     mongodb = STORAGE_FOLDER / DEPLOYMENT / 'mongodb'
@@ -292,7 +304,7 @@ async def mongo_remotes(user: str, self_loc: str, ips: Addresses):
     start_cmds.clear()
 
     for i, ip in enumerate(ips.main):
-        if ip == self_loc:
+        if is_selfhost(ip):
             continue
 
         cmd = list(cmd_base)
@@ -322,11 +334,7 @@ def write_results(results: List[Result], out: Optional[str]=None):
 
 
 
-async def run_starts(
-    ips: Addresses,
-    user: str,
-    database: Database,
-    out: Optional[str]=None):
+async def fetch_repo(ips: Addresses, user: str):
 
     logger.debug(f'cloning repo for addrs {ips}')
     clone = f'git clone {STORAGE_REPO}'
@@ -339,6 +347,14 @@ async def run_starts(
         pull = f'cd {STORAGE_FOLDER} && git pull'
         await run_ssh(pull, user, *failed)
 
+
+
+async def run_starts(
+    ips: Addresses,
+    user: str,
+    database: Database,
+    out: Optional[str]=None):
+
     if database == "redis":
         logger.debug('starting redis daemons')
         results = await redis_start(user, ips)
@@ -348,6 +364,7 @@ async def run_starts(
         results = await mongo_start(user, ips)
 
     write_results(results, out)
+
 
 
 async def run_shutdown(
@@ -373,16 +390,20 @@ async def run_shutdown(
 
 
 
-async def main(file: Optional[str], shutdown: bool, **run_args: Any):
+async def main(
+    file: Optional[str], user: str, shutdown: bool, **run_args: Any):
+
     if file is None:
         file = str(Path(__file__).parent / 'ip-addresses')
 
     ips = Addresses.from_json(file)
 
+    await fetch_repo(ips, user)
+
     if not shutdown:
-        await run_starts(ips, **run_args)
+        await run_starts(ips, user, **run_args)
     else:
-        await run_shutdown(ips, **run_args)
+        await run_shutdown(ips, user, **run_args)
 
 
 

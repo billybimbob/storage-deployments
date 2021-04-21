@@ -7,9 +7,11 @@ import shlex
 
 from deployment.modifyconf import modify_mongo, modify_redis
 from database import (
-    Addresses, DEPLOYMENT, exec_commands, run_shutdown, run_starts)
+    Addresses, DEPLOYMENT,
+    exec_commands, fetch_repo, run_shutdown, run_starts)
 
 from benchmark import Remote, remote_bench
+
 
 
 REDIS_MASTER_PORT = 6379
@@ -18,7 +20,7 @@ MONGO_MASTER_PORT = 27017
 USER = "cc"
 IPS = Addresses.from_json(DEPLOYMENT /'ip-addresses')
 
-with open(DEPLOYMENT / 'parameter_changes', 'r') as f:
+with open(DEPLOYMENT / 'parameter_changes.json', 'r') as f:
     PARAMETERS: Dict[str, Any] = json.load(f)
 
 REDIS_CONFS = DEPLOYMENT / 'redis' / 'confs'
@@ -26,17 +28,20 @@ MONGODB_CONFS = DEPLOYMENT / 'mongodb' / 'confs'
 
 
 async def deploy_redis():
-    for param_name, vals in PARAMETERS["redis"].items():
+    params: Dict[str, Any] = PARAMETERS["redis"]
+
+    for param_name, vals in params.items():
         for param_val in vals:
+
             mod_val = param_name, param_val
 
-            master_conf = modify_redis(
+            master_conf = DEPLOYMENT / modify_redis(
                 REDIS_CONFS / 'master.conf', *mod_val)
 
-            sentinel_conf = modify_redis(
+            sentinel_conf = DEPLOYMENT / modify_redis(
                 REDIS_CONFS / 'sentinel.conf', *mod_val)
 
-            slave_conf = modify_redis(
+            slave_conf = DEPLOYMENT / modify_redis(
                 REDIS_CONFS / 'slave.conf', *mod_val)
 
             scp_cmds = [
@@ -68,9 +73,12 @@ async def deploy_redis():
 
 
 async def deploy_mongodb():
-    for param_name, vals in PARAMETERS["mongodb"].items():
+    params: Dict[str, Any] = PARAMETERS["mongodb"]
+
+    for param_name, vals in params.items():
         for param_val in vals:
-            mongos_conf = modify_mongo(
+
+            mongos_conf = DEPLOYMENT / modify_mongo(
                 MONGODB_CONFS / 'mongos.conf', param_name, param_val)
 
             scp_cmds = [
@@ -92,6 +100,7 @@ async def deploy_mongodb():
 
 
 async def main():
+    await fetch_repo(IPS, USER)
     await deploy_redis()
     await deploy_mongodb()
 
