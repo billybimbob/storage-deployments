@@ -7,7 +7,7 @@ from typing import (
     Any, Dict, List, Literal, Optional, Tuple, TypedDict, cast)
 
 from pymongo import MongoClient
-
+from asyncio.subprocess import PIPE
 import asyncio
 import json
 
@@ -61,7 +61,7 @@ async def create_replica(
     mongod_cmd += ['--port', str(info.port)]
     mongod_cmd += ['--bind_ip', info.members[mem_idx]]
 
-    await asyncio.create_subprocess_exec(*mongod_cmd)
+    await asyncio.create_subprocess_exec(*mongod_cmd, stdout=PIPE)
 
 
 
@@ -82,19 +82,20 @@ def initiate(info: ReplInfo, configsvr: bool):
 
 
 
-async def start_mongos(mongos_idx: int, cluster: Cluster):
+async def start_mongos(mongos_idx: int, config: str, cluster: Cluster):
     log, mongos, configs, shards = cluster.as_tuple()
 
     config_locs = [ f"{c}:{configs.port}" for c in configs.members ]
     config_set = f"{configs.set_name}/{','.join(config_locs)}"
 
-    mongos_cmd = ['monogos']
+    mongos_cmd = ['mongos']
+    mongos_cmd += ['--config', config]
     mongos_cmd += ['--logpath', log]
     mongos_cmd += ['--configdb', config_set]
     mongos_cmd += ['--port', str(mongos.port)]
     mongos_cmd += ['--bind_ip', mongos.members[mongos_idx]]
 
-    await asyncio.create_subprocess_exec(*mongos_cmd)
+    await asyncio.create_subprocess_exec(*mongos_cmd, stdout=PIPE)
 
     # add shards might run too early, keep eye on
     await asyncio.sleep(2)
@@ -112,7 +113,7 @@ def get_cluster(cluster_path: str):
     def convert_label(key: str, info: Any):
         if key == 'log':
             return Log(**info)
-        elif key == 'monogos':
+        elif key == 'mongos':
             return Mongos(**info)
         else:
             return ReplInfo(**info)
@@ -127,15 +128,26 @@ def get_cluster(cluster_path: str):
 
 
 
-async def main(cluster: str, role: Mongot, member: Optional[int]):
+async def main(
+    cluster: str,
+    config: Optional[str],
+    role: Mongot, 
+    member: Optional[int]):
+
     cluster_info = get_cluster(cluster)
 
-    if role == 'mongos' and member is not None:
-        await start_mongos(member, cluster_info)
+    if role == 'mongos' and member and config:
+        await start_mongos(member, config, cluster_info)
 
     elif role == 'mongos':
-        raise ValueError('mongos needs the member specified')
+        raise ValueError('mongos missing some args')
 
+    elif not member:
+        initiate(
+            cluster_info.as_dict()[role],
+            role == 'configs')
+
+    # elif config:
     elif member:
         await create_replica(
             member,
@@ -144,9 +156,7 @@ async def main(cluster: str, role: Mongot, member: Optional[int]):
             cluster_info.log)
 
     else:
-        initiate(
-            cluster_info.as_dict()[role],
-            role == 'configs')
+        raise ValueError('some expected args are missing')
 
 
 
@@ -156,6 +166,9 @@ if __name__ == "__main__":
     args.add_argument('-c', '--cluster',
         required = True, 
         help = 'file path to cluster info')
+
+    args.add_argument('-f', '--config',
+        help = 'config file to start the daemon with')
 
     args.add_argument('-m', '--member',
         type = int,

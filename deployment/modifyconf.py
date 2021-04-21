@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 from pathlib import Path
-
 import json
 
 
+def mod_name(source: Union[str, Path]):
+    if isinstance(source, str):
+        source = Path(source)
 
-def new_config(source: str):
-    return f'{Path(source).stem}-mod.conf'
+    return f'{source.stem}-mod.conf'
 
 
-def modify_redis(source: str, param: str, value: Any):
+def modify_redis(source: Union[str, Path], param: str, value: Any):
     redis_params: List[str] = []
     set_param = False
 
@@ -36,14 +37,14 @@ def modify_redis(source: str, param: str, value: Any):
     if not set_param:
         redis_params.append(f'{param} {value}')
 
-    mod_config_path = str(Path(__file__).parent / 'deployment' / 'redis' / 'confs' / new_config(source))
+    mod_config_path = Path('redis') / 'confs' / mod_name(source)
     with open(mod_config_path, 'w') as f:
         f.write(''.join(redis_params))
     
     return mod_config_path
 
 
-def modify_mongo(source: str, param: str, value: Any):
+def modify_mongo(source: Union[str, Path], param: str, value: Any):
     with open(source) as f:
         configs: Dict[str, Any] = json.load(f)
 
@@ -59,11 +60,12 @@ def modify_mongo(source: str, param: str, value: Any):
 
     param_ref[param_key] = value
 
-    mod_config_path = str(Path(__file__).parent / 'deployment' / 'mongodb' / 'configs' / new_config(source))
+    mod_config_path = Path('mongodb') / 'confs' / mod_name(source)
     with open(mod_config_path, 'w') as f:
         json.dump(configs, f, indent=4)
     
     return mod_config_path
+
 
 
 if __name__ == '__main__':

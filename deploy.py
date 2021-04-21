@@ -1,69 +1,100 @@
-import json
-from pathlib import Path
+
+from typing import Any, Dict
+
 import asyncio as aio
-import time
+import json
+import shlex
 
-from database import *
-from modifyconf import *
-from benchmark import *
+from deployment.modifyconf import modify_mongo, modify_redis
+from database import (
+    Addresses, DEPLOYMENT, exec_commands, run_shutdown, run_starts)
 
-DEPLOYMENT_BASE = Path(__file__).parent / 'deployment' 
+from benchmark import Remote, remote_bench
 
-USER = "cc"
-IPS = Addresses.from_json(str(DEPLOYMENT /'ip-addresses'))
-PARAMETER_CHANGES = json.load(open(str(DEPLOYMENT_BASE / 'parameter_changes.json'), 'r'))
-
-REDIS_CONFIG_BASE = DEPLOYMENT_BASE / 'redis' / 'confs'
-MONGODB_CONFIG_BASE = DEPLOYMENT_BASE / 'mongodb' / 'configs'
 
 REDIS_MASTER_PORT = 6379
 MONGO_MASTER_PORT = 27017
 
+USER = "cc"
+IPS = Addresses.from_json(DEPLOYMENT /'ip-addresses')
+
+with open(DEPLOYMENT / 'parameter_changes', 'r') as f:
+    PARAMETERS: Dict[str, Any] = json.load(f)
+
+REDIS_CONFS = DEPLOYMENT / 'redis' / 'confs'
+MONGODB_CONFS = DEPLOYMENT / 'mongodb' / 'confs'
+
+
 async def deploy_redis():
-    for param_name in PARAMETER_CHANGES["redis"]:
-        for param_val in PARAMETER_CHANGES["redis"][param_name]:
-            master_mod_config_path = modify_redis(str(REDIS_CONFIG_BASE / 'master.conf'), param_name, param_val)
-            cmd = [shlex.split(f'scp {master_mod_config_path} {USER}@{ip}:~/master-mod.conf') for ip in IPS]
-            await exec_commands(*cmd)
+    for param_name, vals in PARAMETERS["redis"].items():
+        for param_val in vals:
+            mod_val = param_name, param_val
 
-            sentinel_mod_config_path = modify_redis(str(REDIS_CONFIG_BASE / 'sentinel.conf'), param_name, param_val)
-            cmd = [shlex.split(f'scp {sentinel_mod_config_path} {USER}@{ip}:~/sentinel-mod.conf') for ip in IPS]
-            await exec_commands(*cmd)
+            master_conf = modify_redis(
+                REDIS_CONFS / 'master.conf', *mod_val)
 
-            slave_mod_config_path = modify_redis(str(REDIS_CONFIG_BASE / 'slave.conf'), param_name, param_val)
-            cmd = [shlex.split(f'scp {slave_mod_config_path} {USER}@{ip}:~/slave-mod.conf') for ip in IPS]
-            await exec_commands(*cmd)
+            sentinel_conf = modify_redis(
+                REDIS_CONFS / 'sentinel.conf', *mod_val)
 
+            slave_conf = modify_redis(
+                REDIS_CONFS / 'slave.conf', *mod_val)
+
+            scp_cmds = [
+                shlex.split(
+                    f'scp {master_conf} {USER}@{ip}:~/master.conf')
+                for ip in IPS ]
+
+            scp_cmds += [
+                shlex.split(
+                    f'scp {sentinel_conf} {USER}@{ip}:~/sentinel.conf')
+                for ip in IPS ]
+
+            scp_cmds += [
+                shlex.split(
+                    f'scp {slave_conf} {USER}@{ip}:~/slave.conf')
+                for ip in IPS ]
+
+            await exec_commands(*scp_cmds)
             await run_starts(IPS, USER, "redis")
 
-            await remote_check("redis", REDIS_MASTER_PORT)
+            remote = Remote(USER, IPS.main[0])
+            await remote_bench(remote, "redis", REDIS_MASTER_PORT)
 
-            user_input = input("Move on to next parameter(y/n):").lower()
-            while user_input != 'y':
-                time.sleep(1)
+            prompt = "Move on to next parameter(y/n):"
+            while input(prompt).lower() != 'y':
+                pass
 
             await run_shutdown(IPS, USER, "redis")
 
-async def deploy_mongodb():
-    for param_name in PARAMETER_CHANGES["mongodb"]:
-        for param_val in PARAMETER_CHANGES["mongodb"][param_name]:
-            mod_config_path = modify_mongo(MONGODB_CONFIG_BASE / 'mongos.conf', param_name, param_val)
-            cmd = [shlex.split(f'scp {mod_config_path} {USER}@{ip}:~/mongos-mod.conf') for ip in IPS]
-            await exec_commands(*cmd)
 
+async def deploy_mongodb():
+    for param_name, vals in PARAMETERS["mongodb"].items():
+        for param_val in vals:
+            mongos_conf = modify_mongo(
+                MONGODB_CONFS / 'mongos.conf', param_name, param_val)
+
+            scp_cmds = [
+                shlex.split(
+                    f'scp {mongos_conf} {USER}@{ip}:~/mongos.conf')
+                for ip in IPS ]
+
+            await exec_commands(*scp_cmds)
             await run_starts(IPS, USER, "mongodb")
 
-            await remote_check("mongodb", MONGO_MASTER_PORT)
+            remote = Remote(USER, IPS.main[0])
+            await remote_bench(remote, "mongodb", MONGO_MASTER_PORT)
 
-            user_input = input("Move on to next parameter(y/n):").lower()
-            while user_input != 'y':
-                time.sleep(1)
+            prompt = "Move on to next parameter(y/n):"
+            while input(prompt).lower() != 'y':
+                pass
 
             await run_shutdown(IPS, USER, "mongodb")
+
 
 async def main():
     await deploy_redis()
     await deploy_mongodb()
+
 
 if __name__ == "__main__":
     aio.run(main())

@@ -9,6 +9,7 @@ from asyncio.subprocess import PIPE
 import asyncio as aio
 
 import json
+import socket
 
 from pymongo import MongoClient
 from database import Database, STORAGE_FOLDER, run_ssh, write_results
@@ -27,7 +28,7 @@ class Remote(NamedTuple):
 
 
 async def redis_bench(port: int, op: Operation, requests: int):
-    out = GEN_PATH / 'redis-bench' / f'{op}_{requests}_times.txt'
+    out = GEN_PATH / 'redis-bench' / f'{op}_{requests}_times.csv'
     out.mkdir(exist_ok=True, parents=True)
 
     bench = ['redis-benchmark']
@@ -88,17 +89,7 @@ def mongo_bench(port: int, op: Operation, size: int):
             db.drop_collection(run_col)
 
 
-
-async def remote_check(ssh: Optional[Remote], database: Database, port: int):
-    if ssh:
-        bench = STORAGE_FOLDER / 'benchmark.py'
-        res = await run_ssh(
-            f'./{bench} -p {port} -d {database}',
-            ssh.user, ssh.address)
-
-        write_results(res)
-        return
-
+async def benchmarks(database: Database, port: int):
     if database == 'mongodb':
         generate(overwrite=False)
 
@@ -113,6 +104,26 @@ async def remote_check(ssh: Optional[Remote], database: Database, port: int):
 
 
 
+async def remote_bench(ssh: Optional[Remote], database: Database, port: int):
+    if not ssh:
+        await benchmarks(database, port)
+        return
+
+    self_loc = socket.gethostbyname(socket.gethostname())
+
+    if self_loc == ssh.address:
+        await benchmarks(database, port)
+        return
+
+    bench = STORAGE_FOLDER / 'benchmark.py'
+    res = await run_ssh(
+        f'./{bench} -p {port} -d {database}',
+        ssh.user, ssh.address)
+
+    write_results(res)
+
+
+
 async def main(user: Optional[str], addr: Optional[str], **kwargs: Any):
     ssh = None
     if user and addr:
@@ -121,7 +132,7 @@ async def main(user: Optional[str], addr: Optional[str], **kwargs: Any):
     elif user or addr:
         raise ValueError('only one of user or addr specified')
 
-    await remote_check(ssh, **kwargs)
+    await remote_bench(ssh, **kwargs)
 
 
 

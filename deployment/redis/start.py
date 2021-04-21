@@ -8,12 +8,12 @@ from argparse import ArgumentParser
 from redis import Redis
 
 
-class Sentinel(NamedTuple):
+class Configs(NamedTuple):
     port: int
-    m_name: str
+    m_name: Optional[str]
 
     @classmethod
-    def from_conf(cls, conf: str):
+    def from_file(cls, conf: Union[str, Path]):
         port, m_name = [None] * 2
 
         with open(conf) as f:
@@ -24,14 +24,17 @@ class Sentinel(NamedTuple):
                 elif 'monitor' in line:
                     m_name = line.split()[2]
 
-        if port and m_name:
-            return cls(port, m_name)
-        else:
+        if port is None:
             raise ValueError('config file is missing values')
+        else:
+            return cls(port, m_name)
         
 
+
 def sentinel_monitor(conf: str, master: str, m_port: int):
-    sent = Sentinel.from_conf(conf)
+    sent = Configs.from_file(conf)
+    if sent.m_name is None:
+        raise ValueError('config file has no master name')
 
     with Redis(port=sent.port) as cli:
         cli.sentinel_monitor(sent.m_name, master, m_port, 2)
@@ -45,23 +48,26 @@ def touch_log(log: Union[Path, str]):
         with open(log, 'x'): pass
 
 
-async def main(
+async def init_server(
     conf: str,
     log: str,
-    sentinel: bool,
-    master: Optional[str],
-    master_port: Optional[int]):
-
-    touch_log(log)
+    sentinel: bool = False,
+    master: Optional[str] = None,
+    master_port: Optional[int] = None):
 
     redis_server = ['redis-server', conf]
     redis_server += ['--logfile', log]
 
     if not sentinel and master and master_port:
-        redis_server += ['--slaveof', master, str(master_port)]
+        redis_server += ['--replicaof', master, str(master_port)]
 
     elif sentinel and master and master_port:
         redis_server.append('--sentinel')
+
+    elif master or master_port:
+        raise ValueError('master args missing addr or port')
+
+    touch_log(log)
 
     print(f'cmd: {redis_server}')
     await asyncio.create_subprocess_exec(*redis_server)
@@ -96,4 +102,4 @@ if __name__ == "__main__":
         help = 'port of the master node')
     
     args = args.parse_args()
-    asyncio.run(main(**vars(args)))
+    asyncio.run(init_server(**vars(args)))

@@ -67,7 +67,7 @@ def create_operations(op: Operation, load: int):
 
 
 
-def generate(overwrite: bool = True):
+def generate(overwrite: bool=True):
     if os.path.exists(LOADS) and not overwrite:
         return
 
