@@ -20,6 +20,11 @@ COPY requirements.txt ./
 
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# still need ssh step
+# CMD [ "/bin/bash" ]
 
-CMD [ "/bin/bash" ]
+EXPOSE 22
+
+RUN apt-get install openssh-server -y \
+&& service ssh start
+
+CMD [ "/usr/sbin/sshd", "-D" ]
