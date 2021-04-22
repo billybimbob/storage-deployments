@@ -80,8 +80,8 @@ def modify_mongo(source: Union[str, Path], param: str, value: Any):
 
 if __name__ == '__main__':
     modify_mongo(
-        "deployment/mongodb/configs/config.conf",
+        "mongodb/confs/config.conf",
         "storage.wiredTiger.engineConfig.cacheSizeGB",
         2)
 
-    modify_redis("deployment/redis/confs/master.conf", "maxmemory", 1)
+    modify_redis("redis/confs/master.conf", "save", "1 1")

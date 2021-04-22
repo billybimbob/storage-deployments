@@ -17,7 +17,7 @@ import shlex
 import socket
 
 from deployment.modifyconf import mongo_conf, redis_conf
-from deployment.redis.start import Configs, init_server
+from deployment.redis.start import init_server, parse_conf
 from deployment.mongodb.start import Cluster, start_mongos
 
 
@@ -171,9 +171,9 @@ async def run_ssh(cmd: str, user: str, *ips: str) -> List[Result]:
 
 async def redis_start(user: str, ips: Addresses) -> List[Result]:
     master_conf = DEPLOYMENT / redis_conf('master.conf')
-    conf_info = Configs.from_file(master_conf)
+    conf_info = parse_conf(master_conf, 'port')
 
-    master_node_port = conf_info.port
+    master_node_port = conf_info['port']
 
     redis = STORAGE_FOLDER / DEPLOYMENT / 'redis'
     r_log = STORAGE_FOLDER / LOGS / 'redis'
@@ -206,7 +206,7 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
         cmd += ['-c', 'sentinel.conf']
         cmd += ['-s']
         cmd += ['-m', random.choice(ips.main)]
-        cmd += ['-p', str(master_node_port)]
+        cmd += ['-p', master_node_port]
         start_cmds.append( Remote(user, ip, cmd) )
 
     for ip in ips.data:
@@ -214,7 +214,7 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
         cmd += ['-l', f'{r_log}/slave.log']
         cmd += ['-c', 'slave.conf']
         cmd += ['-m', random.choice(ips.main)]
-        cmd += ['-p', str(master_node_port)]
+        cmd += ['-p', master_node_port]
         start_cmds.append( Remote(user, ip, cmd) )
 
     results += await exec_commands(*[ s.ssh for s in start_cmds ])

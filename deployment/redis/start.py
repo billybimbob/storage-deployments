@@ -3,41 +3,57 @@
 import asyncio
 from pathlib import Path
 
-from typing import NamedTuple, Optional, Union
+from typing import Dict, Optional, Set, Union
 from argparse import ArgumentParser
 from redis import Redis
 
 
-class Configs(NamedTuple):
-    port: int
-    m_name: Optional[str]
 
-    @classmethod
-    def from_file(cls, conf: Union[str, Path]):
-        port, m_name = [None] * 2
+def parse_conf(conf: Union[str, Path], *args: str) -> Dict[str, str]:
+    parse_args: Dict[str, str] = {}
+    search_args: Set[str] = set(args)
 
-        with open(conf) as f:
-            for line in f:
-                if 'port' in line:
-                    port = int(line.split()[-1])
+    with open(conf) as f:
+        found_args: Set[str] = set()
+        for line in f:
+            for search in search_args:
+                if search in line:
+                    search_val = line.split(search)[-1]
+                    parse_args[search] = search_val
+                    found_args.add(search)
 
-                elif 'monitor' in line:
-                    m_name = line.split()[2]
+                search_args -= found_args
+                found_args.clear()
 
-        if port is None:
-            raise ValueError('config file is missing values')
-        else:
-            return cls(port, m_name)
+    if search_args:
+        raise ValueError('config file is missing values')
+    else:
+        return parse_args
         
 
 
 def sentinel_monitor(conf: str, master: str, m_port: int):
-    sent = Configs.from_file(conf)
-    if sent.m_name is None:
-        raise ValueError('config file has no master name')
+    conf_params = parse_conf(
+        conf, 
+        'port'
+        'sentinel monitor',
+        'sentinel down-after-milliseconds',
+        'sentinel failover-timeout',
+        'sentinel parallel-syncs')
 
-    with Redis(port=sent.port) as cli:
-        cli.sentinel_monitor(sent.m_name, master, m_port, 2)
+    port = int(conf_params['port'])
+    master_name = conf_params['sentinel monitor'].split()[0]
+
+    sentinel_cmds = [
+        arg.split()[1:] + val.split() # drop sentinel word
+        for arg, val in conf_params.items()
+        if arg.startswith('sentinel') and 'monitor' not in arg ]
+
+    with Redis(port=port) as cli:
+        cli.sentinel_monitor(master_name, master, m_port, 2)
+
+        for cmd in sentinel_cmds:
+            cli.sentinel(*cmd)
 
 
 
