@@ -15,16 +15,20 @@ RUN wget -qO - https://www.mongodb.org/static/pgp/server-4.4.asc | apt-key add -
 && apt-get update -y \
 && apt-get install -y mongodb-org
 
-WORKDIR /usr/src/storage
-COPY requirements.txt ./
-
-RUN pip3 install --no-cache-dir -r requirements.txt
-
-# CMD [ "/bin/bash" ]
 
 EXPOSE 22
 
 RUN apt-get install openssh-server -y \
 && service ssh start
 
+RUN useradd -ms /bin/bash newuser
+USER newuser
+WORKDIR /home/newuser/src/storage
+
+COPY requirements.txt ./
+
+RUN pip3 install --no-cache-dir -r requirements.txt
+
 CMD [ "/usr/sbin/sshd", "-D" ]
+
+# CMD [ "/bin/bash" ]
