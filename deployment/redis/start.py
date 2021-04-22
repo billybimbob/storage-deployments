@@ -3,29 +3,40 @@
 import asyncio
 from pathlib import Path
 
-from typing import Dict, Optional, Set, Union
+from typing import Callable, Dict, Optional, Set, Union
 from argparse import ArgumentParser
 from redis import Redis
 
 
+LineCheck = Callable[[str], bool]
 
-def parse_conf(conf: Union[str, Path], *args: str) -> Dict[str, str]:
+def parse_conf(
+    conf: Union[str, Path], 
+    *args: Union[str, LineCheck]) -> Dict[str, str]:
+
     parse_args: Dict[str, str] = {}
-    search_args: Set[str] = set(args)
+    search_args: Set[Union[str, LineCheck]] = set(args)
 
     with open(conf) as f:
         found_args: Set[str] = set()
         for line in f:
             for search in search_args:
-                if search in line:
+
+                if isinstance(search, str):
+                    if search not in line:
+                        continue
+
                     search_val = line.split(search)[-1]
                     parse_args[search] = search_val
                     found_args.add(search)
 
-                search_args -= found_args
-                found_args.clear()
+                elif search(line):
+                    parse_args[line] = '' # not sure
+                    
+            search_args -= found_args
+            found_args.clear()
 
-    if search_args:
+    if any(isinstance(s, str) for s in search_args):
         raise ValueError('config file is missing values')
     else:
         return parse_args
@@ -34,19 +45,23 @@ def parse_conf(conf: Union[str, Path], *args: str) -> Dict[str, str]:
 
 def sentinel_monitor(conf: str, master: str, m_port: int):
     conf_params = parse_conf(
-        conf, 
-        'port'
-        'sentinel monitor',
-        'sentinel down-after-milliseconds',
-        'sentinel failover-timeout',
-        'sentinel parallel-syncs')
+        conf, 'port', lambda l: l.startswith('sentinel'))
 
     port = int(conf_params['port'])
-    master_name = conf_params['sentinel monitor'].split()[0]
+
+    master_name = [
+        param
+        for param in conf_params
+        if 'monitor' in param ]
+
+    if not master_name:
+        raise ValueError('conf missing values')
+
+    master_name = master_name[0].split()[0]
 
     sentinel_cmds = [
-        arg.split()[1:] + val.split() # drop sentinel word
-        for arg, val in conf_params.items()
+        arg.split()[1:] # drop sentinel word
+        for arg in conf_params
         if arg.startswith('sentinel') and 'monitor' not in arg ]
 
     with Redis(port=port) as cli:
