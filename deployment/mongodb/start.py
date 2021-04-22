@@ -52,9 +52,14 @@ class Cluster:
 
 
 async def create_replica(
-    mem_idx: int, info: ReplInfo, is_shard: bool, log: Log):
+    mem_idx: int,
+    config: str,
+    info: ReplInfo,
+    is_shard: bool,
+    log: Log):
 
     mongod_cmd = ['mongod']
+    mongod_cmd += ['--config', config]
     mongod_cmd += ['--logpath', log]
     mongod_cmd += ['--shardsvr' if is_shard else '--configsvr']
     mongod_cmd += ['--replSet', info.set_name]
@@ -147,10 +152,10 @@ async def main(
             cluster_info.as_dict()[role],
             role == 'configs')
 
-    # elif config:
-    elif member:
+    elif config:
         await create_replica(
             member,
+            config,
             cluster_info.as_dict()[role],
             role == 'shards',
             cluster_info.log)

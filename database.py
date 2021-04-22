@@ -275,12 +275,14 @@ async def mongo_remotes(user: str, ips: Addresses):
         cmd = list(cmd_base)
         cmd += ['-r', 'configs']
         cmd += ['-m', str(i)]
+        cmd += ['-c', 'config.conf']
         start_cmds.append( Remote(user, ip, cmd) )
 
     for i, ip in enumerate(ips.data):
         cmd = list(cmd_base)
         cmd += ['-r', 'shards']
         cmd += ['-m', str(i)]
+        cmd += ['-c', 'shard.conf']
         start_cmds.append( Remote(user, ip, cmd) )
 
     results = await exec_commands(*[ s.ssh for s in start_cmds ])

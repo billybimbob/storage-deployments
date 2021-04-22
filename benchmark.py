@@ -15,7 +15,7 @@ from pymongo import MongoClient
 from database import Database, STORAGE_FOLDER, run_ssh, write_results
 
 from load_generation.mongodb_load_gen import (
-    Command, KEY, Operation, LOAD_SIZES, generate, operation_json)
+    Command, Operation, KEY, LOAD_SIZES, generate, operation_json)
 
 
 
@@ -104,7 +104,9 @@ async def benchmarks(database: Database, port: int):
 
 
 
-async def remote_bench(ssh: Optional[Remote], database: Database, port: int):
+async def remote_bench(
+    ssh: Optional[Remote], database: Database, port: int):
+
     if not ssh:
         await benchmarks(database, port)
         return
