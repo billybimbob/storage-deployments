@@ -18,25 +18,24 @@ RUN wget -qO - https://www.mongodb.org/static/pgp/server-4.4.asc | apt-key add -
 
 EXPOSE 22
 
-RUN apt-get install openssh-server sudo -y \
+RUN apt-get install openssh-server sudo git -y \
 && ssh-keygen -A
 
-ENV PASSWD="docker"
-RUN useradd -m docker \
-&& echo "docker:"${PASSWD} | chpasswd \
-&& adduser docker sudo
+ENV USER="cc"
+ENV PASSWD="passwd"
+
+RUN useradd -m $USER \
+&& echo ${USER}:${PASSWD} | chpasswd \
+&& adduser $USER sudo
 
 # RUN useradd -rm -d /home/ubuntu -s /bin/bash -g root -G sudo -u 1001 test 
 # RUN echo 'test:'${PASSWORD} | chpasswd
 
-USER docker
-WORKDIR /home/docker/
+USER $USER
+WORKDIR /home/${USER}/
 
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir -r requirements.txt
-RUN apt-get install git -y
 
-# ENTRYPOINT echo $PASSWD | sudo -S service ssh start
-
-CMD [ "bash" ]
+ENTRYPOINT echo $PASSWD | sudo -S service ssh start && bash
 
