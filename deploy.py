@@ -35,29 +35,29 @@ async def deploy_redis():
         for param_val in vals:
             new_param = param_name, param_val
 
-            master_conf = DEPLOYMENT / modify_redis(
+            master_conf = modify_redis(
                 REDIS_CONFS / 'master.conf', *new_param)
 
-            sentinel_conf = DEPLOYMENT / modify_redis(
+            sentinel_conf = modify_redis(
                 REDIS_CONFS / 'sentinel.conf', *new_param)
 
-            slave_conf = DEPLOYMENT / modify_redis(
+            slave_conf = modify_redis(
                 REDIS_CONFS / 'slave.conf', *new_param)
 
             scp_cmds = [
                 shlex.split(
                     f'scp {master_conf} {USER}@{ip}:~/master.conf')
-                for ip in IPS ]
+                for ip in IPS.main ]
 
             scp_cmds += [
                 shlex.split(
                     f'scp {sentinel_conf} {USER}@{ip}:~/sentinel.conf')
-                for ip in IPS ]
+                for ip in IPS.misc ]
 
             scp_cmds += [
                 shlex.split(
                     f'scp {slave_conf} {USER}@{ip}:~/slave.conf')
-                for ip in IPS ]
+                for ip in IPS.data ]
 
             await exec_commands(*scp_cmds)
             await run_starts(IPS, USER, "redis")
@@ -81,29 +81,29 @@ async def deploy_mongodb():
         for param_val in vals:
             new_param = param_name, param_val
 
-            mongos_conf = DEPLOYMENT / modify_mongo(
+            mongos_conf = modify_mongo(
                 MONGODB_CONFS / 'mongos.conf', *new_param)
             
-            config_conf = DEPLOYMENT / modify_mongo(
+            config_conf = modify_mongo(
                 MONGODB_CONFS / 'config.conf', *new_param)
 
-            shard_conf = DEPLOYMENT / modify_mongo(
+            shard_conf = modify_mongo(
                 MONGODB_CONFS / 'shard.conf', *new_param)
 
             scp_cmds = [
                 shlex.split(
                     f'scp {mongos_conf} {USER}@{ip}:~/mongos.conf')
-                for ip in IPS ]
+                for ip in IPS.main ]
 
             scp_cmds += [
                 shlex.split(
                     f'scp {config_conf} {USER}@{ip}:~/config.conf')
-                for ip in IPS ]
+                for ip in IPS.misc ]
 
             scp_cmds += [
                 shlex.split(
                     f'scp {shard_conf} {USER}@{ip}:~/shard.conf')
-                for ip in IPS ]
+                for ip in IPS.data ]
 
             await exec_commands(*scp_cmds)
             await run_starts(IPS, USER, "mongodb")

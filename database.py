@@ -411,6 +411,7 @@ async def main(
 
 if __name__ == "__main__":
     logging.getLogger('asyncio').setLevel(logging.WARNING)
+    logging.basicConfig(level=logging.DEBUG)
     logger.setLevel(logging.DEBUG)
 
     parse = argparse.ArgumentParser(
