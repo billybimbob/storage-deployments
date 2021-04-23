@@ -4,6 +4,7 @@ from typing import Any, Dict
 import asyncio as aio
 import json
 import shlex
+import sys
 
 from deployment.modifyconf import modify_mongo, modify_redis
 from database import (
@@ -65,10 +66,12 @@ async def deploy_redis():
             await remote_bench(remote, "redis", REDIS_MASTER_PORT)
 
             prompt = "Move on to next parameter(y/n):"
-            while input(prompt).lower() != 'y':
-                pass
+            user_input = input(prompt).lower() 
 
             await run_shutdown(IPS, USER, "redis")
+
+            if user_input == 'n':
+                sys.exit()
 
 
 async def deploy_mongodb():
@@ -109,10 +112,12 @@ async def deploy_mongodb():
             await remote_bench(remote, "mongodb", MONGO_MASTER_PORT)
 
             prompt = "Move on to next parameter(y/n):"
-            while input(prompt).lower() != 'y':
-                pass
+            user_input = input(prompt).lower()
 
             await run_shutdown(IPS, USER, "mongodb")
+
+            if user_input == 'n':
+                sys.exit()
 
 
 async def main():

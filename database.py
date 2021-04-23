@@ -170,7 +170,7 @@ async def run_ssh(cmd: str, user: str, *ips: str) -> List[Result]:
 
 
 async def redis_start(user: str, ips: Addresses) -> List[Result]:
-    master_conf = DEPLOYMENT / mod_path('master.conf')
+    master_conf = mod_path( DEPLOYMENT / 'redis/confs/master.conf')
     conf_info = parse_conf(master_conf, 'port')
 
     master_node_port = conf_info['port']
@@ -225,7 +225,7 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
 
 async def mongo_start(user: str, ips: Addresses) -> List[Result]:
 
-    cluster_loc = DEPLOYMENT / 'cluster.json'
+    cluster_loc = DEPLOYMENT / 'mongodb/cluster.json'
     cluster = update_cluster(cluster_loc, ips)
 
     scp = [ # should scp updated cluster
@@ -241,7 +241,7 @@ async def mongo_start(user: str, ips: Addresses) -> List[Result]:
         if not is_selfhost(ip):
             continue
 
-        mongos_conf = DEPLOYMENT / mod_path('mongos.conf')
+        mongos_conf = mod_path(DEPLOYMENT / 'mongodb/confs/mongos.conf')
         # run locally, no resulting output
         await start_mongos(i, str(mongos_conf), cluster)
 
