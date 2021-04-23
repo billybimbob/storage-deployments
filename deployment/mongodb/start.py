@@ -3,6 +3,7 @@
 from __future__ import annotations
 from argparse import ArgumentParser
 from dataclasses import asdict, astuple, dataclass
+import logging
 from pathlib import Path
 from typing import (
     Any, Dict, List, Literal, Optional, Tuple, TypedDict, Union, cast)
@@ -105,7 +106,11 @@ def initiate(info: ReplInfo, configsvr: bool):
 
 
 async def start_mongos(mongos_idx: int, config: str, cluster: Cluster):
-    log, mongos, configs, shards = cluster.as_tuple()
+    # log, mongos, configs, shards = cluster.as_tuple()
+    log = cluster.log
+    mongos = cluster.mongos
+    configs = cluster.configs
+    shards = cluster.shards
 
     config_locs = [ f"{c}:{configs.port}" for c in configs.members ]
     config_set = f"{configs.set_name}/{','.join(config_locs)}"
@@ -156,7 +161,7 @@ async def main(
     role: Mongot, 
     member: Optional[int]):
 
-    cluster_info = get_cluster(cluster)
+    cluster_info = Cluster.from_json(cluster)
 
     if role == 'mongos' and member and config:
         await start_mongos(member, config, cluster_info)

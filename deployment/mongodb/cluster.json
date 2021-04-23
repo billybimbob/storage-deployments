@@ -1,26 +1,24 @@
 {
-    "log":  "/var/log/mongodb.log",
-
+    "log": "storage-deployments/monitor_and_graphs/logs/mongodb",
     "mongos": {
         "port": 27017,
-        "member": [
-            "<hostname>"
+        "members": [
+            "172.17.0.2"
         ]
     },
-
     "configs": {
         "set_name": "configSet",
         "port": 27019,
         "members": [
-            "<hostname>"
+            "172.17.0.5"
         ]
     },
-
     "shards": {
         "set_name": "shardSet",
         "port": 27018,
         "members": [
-            "<hostname>"
+            "172.17.0.3",
+            "172.17.0.4"
         ]
     }
 }

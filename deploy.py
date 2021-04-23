@@ -82,8 +82,9 @@ async def deploy_mongodb():
         for param_val in vals:
             new_param = param_name, param_val
 
-            mongos_conf = modify_mongo(
-                MONGODB_CONFS / 'mongos.conf', *new_param)
+            # mongos_conf = modify_mongo(
+            #     MONGODB_CONFS / 'mongos.conf', *new_param)
+            mongos_conf = MONGODB_CONFS / 'mongos.conf'
             
             config_conf = modify_mongo(
                 MONGODB_CONFS / 'config.conf', *new_param)

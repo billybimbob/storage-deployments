@@ -233,7 +233,7 @@ async def mongo_start(user: str, ips: Addresses) -> List[Result]:
         if not is_selfhost(ip):
             continue
 
-        mongos_conf = mod_path(DEPLOYMENT / 'mongodb/confs/mongos.conf')
+        mongos_conf = DEPLOYMENT / 'mongodb/confs/mongos.conf'
         # run locally, no resulting output
         await start_mongos(i, str(mongos_conf), cluster)
 
@@ -250,7 +250,7 @@ def update_cluster(cluster_loc: Path, ips: Addresses) -> Cluster:
     cluster.shards.members = ips.data
 
     with open(cluster_loc, 'r+') as f:
-        json.dump(cluster, f, indent=4)
+        json.dump(cluster.as_dict(), f, indent=4)
 
     return cluster
 
