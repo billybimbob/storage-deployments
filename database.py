@@ -242,16 +242,14 @@ async def mongo_start(user: str, ips: Addresses) -> List[Result]:
 
 def update_cluster(cluster_loc: Path, ips: Addresses) -> Cluster:
     m_log = STORAGE_FOLDER / LOGS / 'mongodb'
+    cluster = Cluster.from_json(cluster_loc)
+
+    cluster.log = str(m_log)
+    cluster.mongos.members = ips.main
+    cluster.configs.members = ips.misc
+    cluster.shards.members = ips.data
 
     with open(cluster_loc, 'r+') as f:
-        cluster = json.load(f)
-        cluster = Cluster(**cluster)
-
-        cluster.log = str(m_log)
-        cluster.mongos.members = ips.main
-        cluster.configs.members = ips.misc
-        cluster.shards.members = ips.data
-
         json.dump(cluster, f, indent=4)
 
     return cluster

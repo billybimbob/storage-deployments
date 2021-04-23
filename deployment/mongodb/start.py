@@ -3,8 +3,9 @@
 from __future__ import annotations
 from argparse import ArgumentParser
 from dataclasses import asdict, astuple, dataclass
+from pathlib import Path
 from typing import (
-    Any, Dict, List, Literal, Optional, Tuple, TypedDict, cast)
+    Any, Dict, List, Literal, Optional, Tuple, TypedDict, Union, cast)
 
 from pymongo import MongoClient
 from asyncio.subprocess import PIPE
@@ -40,6 +41,22 @@ class Cluster:
         mongos: Mongos
         configs: ReplInfo
         shards: ReplInfo
+
+    @classmethod
+    def from_json(cls, file: Union[str, Path]):
+        with open(file) as f:
+            clust_data = json.load(f)
+            log = clust_data['log']
+            mongos = Mongos(**clust_data['mongos'])
+            configs = ReplInfo(**clust_data['configs'])
+            shards = ReplInfo(**clust_data['shards'])
+
+            return Cluster(
+                log = log,
+                mongos = mongos,
+                configs = configs,
+                shards = shards)
+
 
     def as_tuple(self):
         return cast(
