@@ -9,7 +9,7 @@ from argparse import ArgumentParser
 from pathlib import Path
 
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Set, Optional, Union
+from typing import Any, Callable, Dict, List, Set, Optional, Union
 
 from redis import Redis
 
@@ -132,7 +132,8 @@ async def create_cluster(conf: str, ips: str):
 
     logging.info(redis_cli)
 
-    proc = await asyncio.create_subprocess_exec(*redis_cli, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    proc = await asyncio.create_subprocess_exec(
+        *redis_cli, stdin=PIPE, stdout=PIPE, stderr=PIPE)
 
     out, error = await proc.communicate("yes\n".encode("utf-8"))
 
@@ -164,21 +165,24 @@ async def init_server(
     elif ips:
         await create_cluster(conf, ips)
 
-    # if not sentinel and master and master_port:
-    #     redis_server += ['--slaveof', master, str(master_port)]
-
-    # elif sentinel and master and master_port:
-    #     redis_server.append('--sentinel')
-
-    # elif master or master_port:
-    #     raise ValueError('master args missing addr or port')
 
 
-    # if sentinel and master and master_port:
-    #     await asyncio.sleep(2)
-    #     # might run too early
-    #     sentinel_monitor(conf, master, master_port)
+async def end_server(conf: str):
+    port = parse_conf(conf, 'port')['port']
+    port = int(port)
 
+    with Redis(port=port) as cli:
+        cli.flushall()
+        cli.cluster('reset')
+        cli.shutdown()
+
+
+
+async def mod_server(conf: str, shutdown: bool, init_args: Any):
+    if shutdown:
+        await end_server(conf)
+    else:
+        await init_server(conf, **init_args)
 
 
 if __name__ == "__main__":
@@ -198,6 +202,10 @@ if __name__ == "__main__":
     args.add_argument('-l', '--log',
         help = 'log file location')
 
+    args.add_argument('-s', '--shutdown',
+        action = 'store_true',
+        help = 'run shutdown instead of init')
+
     # args.add_argument('-m', '--master',
     #     help = 'location of the master node')
 
@@ -208,4 +216,4 @@ if __name__ == "__main__":
     logging.basicConfig("testing.txt")
 
     args = args.parse_args()
-    asyncio.run(init_server(**vars(args)))
+    asyncio.run(mod_server(**vars(args)))

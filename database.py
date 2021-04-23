@@ -16,7 +16,7 @@ import shlex
 import socket
 
 from deployment.modifyconf import mod_path
-from deployment.redis.start import init_server
+from deployment.redis.start import end_server, init_server
 from deployment.mongodb.start import Cluster, start_mongos
 
 
@@ -370,15 +370,25 @@ async def run_shutdown(
     # go reverse so that main nodes end last
     if database == 'redis':
         logger.debug('stopping redis daemons')
-        shutdown = 'redis-cli shutdown'
+
+        if any(is_selfhost(ip) for ip in ips):
+            master_conf = mod_path(DEPLOYMENT / 'redis/confs/master.conf')
+            await end_server(str(master_conf))
+
+        non_local = [ip for ip in ips if is_selfhost(ip)]
+        redis = STORAGE_FOLDER / DEPLOYMENT / 'redis'
+        shutdown = f'./{redis}/start.py -s -c master.conf'
+
+        results = await run_ssh(shutdown, *non_local)
+
 
     elif database == 'mongodb':
         logger.debug('stopping mongo daemons')
         shutdown = 'mongod --shutdown'
 
-    # shutdown main first
-    results = await run_ssh(shutdown, user, *ips.main)
-    results += await run_ssh(shutdown, user, *ips.data, *ips.misc)
+        # shutdown main first
+        results = await run_ssh(shutdown, user, *ips.main)
+        results += await run_ssh(shutdown, user, *ips.data, *ips.misc)
 
     write_results(results, out)
 
