@@ -214,7 +214,7 @@ if __name__ == "__main__":
     #     type = int,
     #     help = 'port of the master node')
     
-    logging.basicConfig(filename="testing.txt",filemode="w")
+    logging.basicConfig(filename="testing.txt", filemode="w")
 
     args = args.parse_args()
     asyncio.run(mod_server(**vars(args)))

@@ -169,7 +169,7 @@ async def run_ssh(cmd: str, user: str, *ips: str) -> List[Result]:
 
 
 async def redis_start(user: str, ips: Addresses) -> List[Result]:
-    master_conf = mod_path(DEPLOYMENT / 'redis/confs/master.conf')
+    master_conf = DEPLOYMENT / 'redis/confs/master.conf'
 
     redis = STORAGE_FOLDER / DEPLOYMENT / 'redis'
     r_log = STORAGE_FOLDER / LOGS / 'redis'
