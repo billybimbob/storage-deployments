@@ -379,7 +379,7 @@ async def run_shutdown(
         redis = STORAGE_FOLDER / DEPLOYMENT / 'redis'
         shutdown = f'./{redis}/start.py -s -c master.conf'
 
-        results = await run_ssh(shutdown, *non_local)
+        results = await run_ssh(shutdown, user, *non_local)
 
 
     elif database == 'mongodb':
