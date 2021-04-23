@@ -132,7 +132,7 @@ async def exec_commands(*commands: List[str]) -> List[Result]:
 
         logger.debug(f'run: {run_num} waiting')
         try:
-            com = await aio.wait_for(sub_proc.communicate(), 8)
+            com = await aio.wait_for(sub_proc.communicate(), 12)
             logger.debug(f'run: {run_num} finished')
 
         except aio.TimeoutError:

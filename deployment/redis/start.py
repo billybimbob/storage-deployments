@@ -123,22 +123,22 @@ async def create_cluster(conf: str, ips: str):
     addrs = Addresses.from_json(ips)
     nodes = [f'{ip}:{port}' for ip in addrs]
 
-    # logging.info(nodes)
+    logging.info(nodes)
 
     redis_cli = ['redis-cli']
     redis_cli += ['-c']
     redis_cli += ['--cluster', 'create', *nodes]
     redis_cli += ['--cluster-replicas', str(0)]
 
-    # logging.info(redis_cli)
+    logging.info(redis_cli)
 
     proc = await asyncio.create_subprocess_exec(
         *redis_cli, stdin=PIPE, stdout=PIPE, stderr=PIPE)
 
     out, error = await proc.communicate("yes\n".encode("utf-8"))
 
-    # logging.info(out)
-    # logging.info(error)
+    logging.info(out)
+    logging.info(error)
 
     # with Redis(port=port) as cli:
     #     cli.cluster('create', *nodes)        
@@ -213,7 +213,7 @@ if __name__ == "__main__":
     #     type = int,
     #     help = 'port of the master node')
     
-    # logging.basicConfig("testing.txt")
+    logging.basicConfig("testing.txt")
 
     args = args.parse_args()
     asyncio.run(mod_server(**vars(args)))
