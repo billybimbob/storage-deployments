@@ -107,19 +107,22 @@ def parse_conf(
 
 
 
-def create_cluster(ips: str):
-    addrs = Addresses.from_json(ips)
-    with Redis() as cli:
-        cli.cluster('create', *addrs)
-
-
-
 def touch_log(log: Union[Path, str]):
     log = Path(log)
     log.parent.mkdir(exist_ok=True, parents=True)
 
     if not log.exists():
         with open(log, 'x'): pass
+
+
+
+def create_cluster(conf: str, ips: str):
+    port = parse_conf(conf, 'port')['port']
+    addrs = Addresses.from_json(ips)
+    nodes = [f'{ip}:{port}' for ip in addrs]
+
+    with Redis() as cli:
+        cli.cluster('create', *nodes)
 
 
 
@@ -142,7 +145,7 @@ async def init_server(
         await asyncio.create_subprocess_exec(*redis_server)
     
     elif ips:
-        create_cluster(ips)
+        create_cluster(conf, ips)
 
     # if not sentinel and master and master_port:
     #     redis_server += ['--slaveof', master, str(master_port)]

@@ -12,12 +12,11 @@ import argparse
 import json
 import logging
 
-import random
 import shlex
 import socket
 
 from deployment.modifyconf import mod_path
-from deployment.redis.start import init_server, parse_conf
+from deployment.redis.start import init_server
 from deployment.mongodb.start import Cluster, start_mongos
 
 
@@ -170,10 +169,7 @@ async def run_ssh(cmd: str, user: str, *ips: str) -> List[Result]:
 
 
 async def redis_start(user: str, ips: Addresses) -> List[Result]:
-    master_conf = mod_path( DEPLOYMENT / 'redis/confs/master.conf')
-    conf_info = parse_conf(master_conf, 'port')
-
-    master_node_port = conf_info['port']
+    master_conf = mod_path(DEPLOYMENT / 'redis/confs/master.conf')
 
     redis = STORAGE_FOLDER / DEPLOYMENT / 'redis'
     r_log = STORAGE_FOLDER / LOGS / 'redis'
@@ -182,12 +178,14 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
     cmd_base = [f'./{redis}/start.py']
 
     # local addr can potentially be a main addr
-    if any( is_selfhost(ip) for ip in ips.main ):
+    in_ips = any( is_selfhost(ip) for ip in ips )
+
+    if in_ips:
         log = LOGS / 'redis' / 'master.log'
         # run locally, no out info
         await init_server(str(master_conf), log=str(log))
 
-    for ip in ips.main:
+    for ip in ips:
         if is_selfhost(ip):
             continue
 
@@ -198,26 +196,20 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
         
     # ensure master starts before other nodes
     results = await exec_commands(*[ s.ssh for s in start_cmds ])
-    start_cmds.clear()
 
-    for ip in ips.misc:
-        cmd = list(cmd_base)
-        cmd += ['-l', f'{r_log}/sentinel.log']
-        cmd += ['-c', 'sentinel.conf']
-        cmd += ['-s']
-        cmd += ['-m', random.choice(ips.main)]
-        cmd += ['-p', master_node_port]
-        start_cmds.append( Remote(user, ip, cmd) )
+    addrs_loc = str(DEPLOYMENT / 'parameter_changes.json')
 
-    for ip in ips.data:
-        cmd = list(cmd_base)
-        cmd += ['-l', f'{r_log}/slave.log']
-        cmd += ['-c', 'slave.conf']
-        cmd += ['-m', random.choice(ips.main)]
-        cmd += ['-p', master_node_port]
-        start_cmds.append( Remote(user, ip, cmd) )
+    if in_ips:
+        await init_server(str(master_conf), ips=addrs_loc)
+    
+    else:
+        cluster_start = list(cmd_base)
+        cluster_start += ['-c', str(master_conf)]
+        cluster_start += ['-i', addrs_loc]
+        ip = ips.main[0]
+        cluster_start = Remote(user, ip, cluster_start)
 
-    results += await exec_commands(*[ s.ssh for s in start_cmds ])
+        results += await exec_commands(cluster_start.ssh)
 
     return results
 
