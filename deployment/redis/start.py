@@ -178,7 +178,7 @@ async def end_server(conf: str):
 
 
 
-async def mod_server(conf: str, shutdown: bool, init_args: Any):
+async def mod_server(conf: str, shutdown: bool, **init_args: Any):
     if shutdown:
         await end_server(conf)
     else:
