@@ -3,22 +3,22 @@
     "mongos": {
         "port": 27017,
         "members": [
-            "redis-mongo-bench-1"
+            "10.52.0.172"
         ]
     },
     "configs": {
         "set_name": "configSet",
         "port": 27019,
         "members": [
-            "redis-mongo-bench-4"
+            "10.52.3.53"
         ]
     },
     "shards": {
         "set_name": "shardSet",
         "port": 27018,
         "members": [
-            "redis-mongo-bench-2",
-            "redis-mongo-bench-3"
+            "10.52.1.96",
+            "10.52.3.206"
         ]
     }
 }

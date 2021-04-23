@@ -5,6 +5,8 @@ load-output/
 *-mod.conf
 dump.rdb
 *.csv
+monitor_and_graphs/logs/mongodb
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

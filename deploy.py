@@ -124,8 +124,8 @@ async def deploy_mongodb():
 
 async def main():
     await fetch_repo(IPS, USER)
-    await deploy_redis()
-    # await deploy_mongodb()
+    # await deploy_redis()
+    await deploy_mongodb()
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from argparse import ArgumentParser
 from dataclasses import asdict, astuple, dataclass
 import logging
 from pathlib import Path
+from re import S
 from typing import (
     Any, Dict, List, Literal, Optional, Tuple, TypedDict, Union, cast)
 
@@ -60,12 +61,10 @@ class Cluster:
 
 
     def as_tuple(self):
-        return cast(
-            Tuple[Log, Mongos, ReplInfo, ReplInfo],
-            astuple(self))
+        return self.log, self.mongos, self.configs, self.shards
 
     def as_dict(self):
-        return cast(Cluster.Dict, asdict(self))
+        return Cluster.Dict(log=self.log, mongos=self.mongos, configs=self.configs, shards=self.shards)
 
 
 
@@ -76,15 +75,24 @@ async def create_replica(
     is_shard: bool,
     log: Log):
 
+    path = Path(log)
+    path.mkdir(parents=True, exist_ok=True)
+    path = f"{log}/shard_{mem_idx}.txt" if is_shard else f"{log}/config_{mem_idx}.txt"
+    with open(path,"w"):
+        pass
+
     mongod_cmd = ['mongod']
     mongod_cmd += ['--config', config]
-    mongod_cmd += ['--logpath', log]
+    mongod_cmd += ['--logpath', path]
     mongod_cmd += ['--shardsvr' if is_shard else '--configsvr']
     mongod_cmd += ['--replSet', info.set_name]
     mongod_cmd += ['--port', str(info.port)]
     mongod_cmd += ['--bind_ip', info.members[mem_idx]]
 
+    print(f"mongod_cmd: {' '.join(mongod_cmd)}")
+
     await asyncio.create_subprocess_exec(*mongod_cmd, stdout=PIPE)
+
 
 
 
@@ -106,11 +114,11 @@ def initiate(info: ReplInfo, configsvr: bool):
 
 
 async def start_mongos(mongos_idx: int, config: str, cluster: Cluster):
-    # log, mongos, configs, shards = cluster.as_tuple()
-    log = cluster.log
-    mongos = cluster.mongos
-    configs = cluster.configs
-    shards = cluster.shards
+    log, mongos, configs, shards = cluster.as_tuple()
+    # log = cluster.log
+    # mongos = cluster.mongos
+    # configs = cluster.configs
+    # shards = cluster.shards
 
     config_locs = [ f"{c}:{configs.port}" for c in configs.members ]
     config_set = f"{configs.set_name}/{','.join(config_locs)}"
@@ -135,23 +143,23 @@ async def start_mongos(mongos_idx: int, config: str, cluster: Cluster):
 
 
 
-def get_cluster(cluster_path: str):
+# def get_cluster(cluster_path: str):
 
-    def convert_label(key: str, info: Any):
-        if key == 'log':
-            return Log(**info)
-        elif key == 'mongos':
-            return Mongos(**info)
-        else:
-            return ReplInfo(**info)
+#     def convert_label(key: str, info: Any):
+#         if key == 'log':
+#             return Log(**info)
+#         elif key == 'mongos':
+#             return Mongos(**info)
+#         else:
+#             return ReplInfo(**info)
 
-    with open(cluster_path,'r') as f:
-        cluster = json.load(f) # should be a dict
-        cluster = {
-            label: convert_label(label, info)
-            for label, info in cluster.items() }
+#     with open(cluster_path,'r') as f:
+#         cluster = json.load(f) # should be a dict
+#         cluster = {
+#             label: convert_label(label, info)
+#             for label, info in cluster.items() }
 
-        return Cluster(**cluster)
+#         return Cluster(**cluster)
 
 
 
@@ -162,6 +170,7 @@ async def main(
     member: Optional[int]):
 
     cluster_info = Cluster.from_json(cluster)
+    print(f"cluster info here: {cluster_info}")
 
     if role == 'mongos' and member and config:
         await start_mongos(member, config, cluster_info)
@@ -169,7 +178,7 @@ async def main(
     elif role == 'mongos':
         raise ValueError('mongos missing some args')
 
-    elif not member:
+    elif member is None:
         initiate(
             cluster_info.as_dict()[role],
             role == 'configs')
