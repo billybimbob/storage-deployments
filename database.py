@@ -330,13 +330,15 @@ async def fetch_repo(ips: Addresses, user: str):
 
     logger.debug(f'cloning repo for addrs {ips}')
     clone = f'git clone {STORAGE_REPO}'
-    results = await run_ssh(clone, user, *ips)
+
+    non_local = [ip for ip in ips if not is_selfhost(ip)]
+    results = await run_ssh(clone, user, *non_local)
 
     failed = [ ip for ip, res in zip(ips, results) if res.is_error ]
 
     if failed:
         logger.debug(f'pulling git for addrs {failed}')
-        pull = f'cd {STORAGE_FOLDER} && git pull'
+        pull = f'cd {STORAGE_FOLDER} && git checkout . && git pull'
         await run_ssh(pull, user, *failed)
 
 

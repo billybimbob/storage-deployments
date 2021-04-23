@@ -1,14 +1,14 @@
 {
     "main": [
-        "172.17.0.2"
+        "redis-mongo-bench-1"
     ],
 
     "data": [
-        "172.17.0.3",
-        "172.17.0.4"
+        "redis-mongo-bench-2",
+        "redis-mongo-bench-3"
     ],
 
     "misc": [
-        "172.17.0.5"
+        "redis-mongo-bench-4"
     ]
 }
