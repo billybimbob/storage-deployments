@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import logging
 from typing import Any, Dict, List, Union
 from pathlib import Path
 import json
@@ -45,6 +46,7 @@ def modify_redis(source: Union[str, Path], param: str, value: Any):
 
 
 def modify_mongo(source: Union[str, Path], param: str, value: Any):
+    logging.info(source)
     with open(source) as f:
         configs: Dict[str, Any] = json.load(f)
 
@@ -69,6 +71,8 @@ def modify_mongo(source: Union[str, Path], param: str, value: Any):
 
 
 if __name__ == '__main__':
+    logging.basicConfig(filename="testing2.txt")
+    
     modify_mongo(
         "mongodb/confs/config.conf",
         "storage.wiredTiger.engineConfig.cacheSizeGB",
