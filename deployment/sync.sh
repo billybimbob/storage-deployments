@@ -14,12 +14,11 @@ for ip in $IPS; do
 done
 
 for host in $HOSTS; do
- 
   echo "Copying to node $host ..."
-  sshpass -p "passwd" scp -q /etc/hosts $host:/tmp/hosts
+  scp -q /etc/hosts $host:/tmp/hosts
   # scp -q ~/nodes $host:~/nodes
-  sshpass -p "passwd" scp -q ~/.ssh/known_hosts $host:~/.ssh/known_hosts
+  scp -q ~/.ssh/* $host:~/.ssh/
   # scp -q ~/.bashrc $host:~/.bashrc
-  # sshpass -p "passwd" scp -q ~/.bash_aliases $host:~/.bash_aliases
-  sshpass -p "passwd" ssh $host "sudo mv /tmp/hosts /etc/hosts"
+  # scp -q ~/.bash_aliases $host:~/.bash_aliases
+  ssh $host "sudo mv /tmp/hosts /etc/hosts"
 done
