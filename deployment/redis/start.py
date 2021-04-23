@@ -121,8 +121,8 @@ def create_cluster(conf: str, ips: str):
     addrs = Addresses.from_json(ips)
     nodes = [f'{ip}:{port}' for ip in addrs]
 
-    with Redis() as cli:
-        cli.cluster('create', *nodes)
+    with Redis(port=port) as cli:
+        cli.cluster('create', *nodes)        
 
 
 
