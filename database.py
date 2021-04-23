@@ -82,8 +82,8 @@ class Remote:
         ip: str,
         cmd: Union[str, List[str]]):
 
-        if not self.valid_ip(ip):
-            raise ValueError('ip is not valid')
+        # if not self.valid_ip(ip):
+        #     raise ValueError('ip is not valid')
 
         if isinstance(cmd, list):
             cmd = ' '.join(cmd)
