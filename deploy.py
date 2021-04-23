@@ -38,26 +38,26 @@ async def deploy_redis():
             master_conf = modify_redis(
                 REDIS_CONFS / 'master.conf', *new_param)
 
-            sentinel_conf = modify_redis(
-                REDIS_CONFS / 'sentinel.conf', *new_param)
+            # sentinel_conf = modify_redis(
+            #     REDIS_CONFS / 'sentinel.conf', *new_param)
 
-            slave_conf = modify_redis(
-                REDIS_CONFS / 'slave.conf', *new_param)
+            # slave_conf = modify_redis(
+            #     REDIS_CONFS / 'slave.conf', *new_param)
 
             scp_cmds = [
                 shlex.split(
                     f'scp {master_conf} {USER}@{ip}:~/master.conf')
-                for ip in IPS.main ]
+                for ip in IPS ]
 
-            scp_cmds += [
-                shlex.split(
-                    f'scp {sentinel_conf} {USER}@{ip}:~/sentinel.conf')
-                for ip in IPS.misc ]
+            # scp_cmds += [
+            #     shlex.split(
+            #         f'scp {sentinel_conf} {USER}@{ip}:~/sentinel.conf')
+            #     for ip in IPS.misc ]
 
-            scp_cmds += [
-                shlex.split(
-                    f'scp {slave_conf} {USER}@{ip}:~/slave.conf')
-                for ip in IPS.data ]
+            # scp_cmds += [
+            #     shlex.split(
+            #         f'scp {slave_conf} {USER}@{ip}:~/slave.conf')
+            #     for ip in IPS.data ]
 
             await exec_commands(*scp_cmds)
             await run_starts(IPS, USER, "redis")

@@ -81,22 +81,22 @@ def touch_log(log: Union[Path, str]):
 
 async def init_server(
     conf: str,
-    log: str,
-    sentinel: bool = False,
-    master: Optional[str] = None,
-    master_port: Optional[int] = None):
+    log: Optional[str],
+    ips: Optional[str]):
 
     redis_server = ['redis-server', conf]
-    redis_server += ['--logfile', log]
+    
+    if log:
+        redis_server += ['--logfile', log]
 
-    if not sentinel and master and master_port:
-        redis_server += ['--slaveof', master, str(master_port)]
+    # if not sentinel and master and master_port:
+    #     redis_server += ['--slaveof', master, str(master_port)]
 
-    elif sentinel and master and master_port:
-        redis_server.append('--sentinel')
+    # elif sentinel and master and master_port:
+    #     redis_server.append('--sentinel')
 
-    elif master or master_port:
-        raise ValueError('master args missing addr or port')
+    # elif master or master_port:
+    #     raise ValueError('master args missing addr or port')
 
     touch_log(log)
 
@@ -117,20 +117,22 @@ if __name__ == "__main__":
         required = True,
         help = 'the redis configuration file')
 
-    args.add_argument('-s', '--sentinel',
-        action = 'store_true',
-        help = 'start as a sentinel node')
+    # args.add_argument('-s', '--sentinel',
+    #     action = 'store_true',
+    #     help = 'start as a sentinel node')
+
+    args.add_argument('-i', '--ips',
+        help = 'ips file location')
 
     args.add_argument('-l', '--log',
-        required = True,
         help = 'log file location')
 
-    args.add_argument('-m', '--master',
-        help = 'location of the master node')
+    # args.add_argument('-m', '--master',
+    #     help = 'location of the master node')
 
-    args.add_argument('-p', '--master-port',
-        type = int,
-        help = 'port of the master node')
+    # args.add_argument('-p', '--master-port',
+    #     type = int,
+    #     help = 'port of the master node')
     
     args = args.parse_args()
     asyncio.run(init_server(**vars(args)))
