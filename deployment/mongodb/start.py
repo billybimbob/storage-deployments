@@ -75,15 +75,19 @@ async def create_replica(
     is_shard: bool,
     log: Log):
 
-    path = Path(log)
-    path.mkdir(parents=True, exist_ok=True)
-    path = f"{log}/shard_{mem_idx}.txt" if is_shard else f"{log}/config_{mem_idx}.txt"
-    with open(path,"w"):
+    db_path = Path(log) / "db"
+    db_path.mkdir(parents=True, exist_ok=True)
+
+    log_path = Path(log)
+    log_path.mkdir(parents=True, exist_ok=True)
+    log_path = f"{log}/shard_{mem_idx}.txt" if is_shard else f"{log}/config_{mem_idx}.txt"
+    with open(log_path,"w"):
         pass
 
     mongod_cmd = ['mongod']
     mongod_cmd += ['--config', config]
-    mongod_cmd += ['--logpath', path]
+    mongod_cmd += ['--dbpath', db_path]
+    mongod_cmd += ['--logpath', log_path]
     mongod_cmd += ['--shardsvr' if is_shard else '--configsvr']
     mongod_cmd += ['--replSet', info.set_name]
     mongod_cmd += ['--port', str(info.port)]
