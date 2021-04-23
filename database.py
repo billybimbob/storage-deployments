@@ -375,7 +375,7 @@ async def run_shutdown(
             master_conf = mod_path(DEPLOYMENT / 'redis/confs/master.conf')
             await end_server(str(master_conf))
 
-        non_local = [ip for ip in ips if is_selfhost(ip)]
+        non_local = [ip for ip in ips if not is_selfhost(ip)]
         redis = STORAGE_FOLDER / DEPLOYMENT / 'redis'
         shutdown = f'./{redis}/start.py -s -c master.conf'
 
