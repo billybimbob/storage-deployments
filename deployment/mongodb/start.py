@@ -77,6 +77,7 @@ async def create_replica(
 
     db_path = Path(log) / "db"
     db_path.mkdir(parents=True, exist_ok=True)
+    db_path = str(db_path)
 
     log_path = Path(log)
     log_path.mkdir(parents=True, exist_ok=True)
