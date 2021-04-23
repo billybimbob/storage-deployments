@@ -4,6 +4,7 @@ node*.conf
 load-output/
 *-mod.conf
 dump.rdb
+*.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

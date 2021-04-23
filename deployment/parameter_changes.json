@@ -1,6 +1,6 @@
 { 
     "redis": {
-        "maxmemory" : ["1mb","2mb","4mb"],
+        "maxmemory" : ["1gb","2gb","4gb"],
         "save" : ["1 1","60 10","120 10","300 10"],
         "repl-diskless-sync": ["yes","no"]
     },

@@ -5,6 +5,7 @@ import asyncio as aio
 import json
 import shlex
 import sys
+import logging
 
 from deployment.modifyconf import modify_mongo, modify_redis
 from database import (
@@ -62,8 +63,8 @@ async def deploy_redis():
             await exec_commands(*scp_cmds)
             await run_starts(IPS, USER, "redis")
 
-            remote = Remote(USER, IPS.main[0])
-            await remote_bench(remote, "redis", REDIS_MASTER_PORT)
+            # remote = Remote(USER, IPS.main[0])
+            # await remote_bench(remote, "redis", REDIS_MASTER_PORT)
 
             prompt = "Move on to next parameter(y/n):"
             user_input = input(prompt).lower() 
@@ -127,4 +128,6 @@ async def main():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
+    
     aio.run(main())

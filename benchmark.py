@@ -29,7 +29,7 @@ class Remote(NamedTuple):
 
 async def redis_bench(port: int, op: Operation, requests: int):
     out = GEN_PATH / 'redis-bench' / f'{op}_{requests}_times.csv'
-    out.mkdir(exist_ok=True, parents=True)
+    out.parent.mkdir(exist_ok=True, parents=True)
 
     bench = ['redis-benchmark']
     bench += ['-p', str(port)]
@@ -37,6 +37,7 @@ async def redis_bench(port: int, op: Operation, requests: int):
     bench += ['-n', str(requests)]
     bench += ['-d', str(20)]
     bench += ['--csv']
+    bench += ['--cluster']
 
     if op == 'write':  bench += ['-t', 'set']
     elif op == 'read': bench += ['-t', 'get']

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
+from asyncio.subprocess import PIPE
 import asyncio
 import json
+import logging
 
 from argparse import ArgumentParser
 from pathlib import Path
@@ -116,14 +118,29 @@ def touch_log(log: Union[Path, str]):
 
 
 
-def create_cluster(conf: str, ips: str):
-    port = parse_conf(conf, 'port')['port']
+async def create_cluster(conf: str, ips: str):
+    port = int(parse_conf(conf, 'port')['port'])
     addrs = Addresses.from_json(ips)
     nodes = [f'{ip}:{port}' for ip in addrs]
 
-    with Redis(port=port) as cli:
-        cli.cluster('create', *nodes)        
+    logging.info(nodes)
 
+    redis_cli = ['redis-cli']
+    redis_cli += ['-c']
+    redis_cli += ['--cluster', 'create', *nodes]
+    redis_cli += ['--cluster-replicas', str(0)]
+
+    logging.info(redis_cli)
+
+    proc = await asyncio.create_subprocess_exec(*redis_cli, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+
+    out, error = await proc.communicate("yes\n".encode("utf-8"))
+
+    logging.info(out)
+    logging.info(error)
+
+    # with Redis(port=port) as cli:
+    #     cli.cluster('create', *nodes)        
 
 
 async def init_server(
@@ -145,7 +162,7 @@ async def init_server(
         await asyncio.create_subprocess_exec(*redis_server)
     
     elif ips:
-        create_cluster(conf, ips)
+        await create_cluster(conf, ips)
 
     # if not sentinel and master and master_port:
     #     redis_server += ['--slaveof', master, str(master_port)]
@@ -188,5 +205,7 @@ if __name__ == "__main__":
     #     type = int,
     #     help = 'port of the master node')
     
+    logging.basicConfig("testing.txt")
+
     args = args.parse_args()
     asyncio.run(init_server(**vars(args)))
