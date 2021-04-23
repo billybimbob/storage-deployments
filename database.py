@@ -169,7 +169,6 @@ async def run_ssh(cmd: str, user: str, *ips: str) -> List[Result]:
 
 
 async def redis_start(user: str, ips: Addresses) -> List[Result]:
-    master_conf = DEPLOYMENT / 'redis/confs/master.conf'
 
     redis = STORAGE_FOLDER / DEPLOYMENT / 'redis'
     r_log = STORAGE_FOLDER / LOGS / 'redis'
@@ -181,6 +180,7 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
     in_ips = any( is_selfhost(ip) for ip in ips )
 
     if in_ips:
+        master_conf = DEPLOYMENT / 'redis/confs/master.conf'
         log = LOGS / 'redis' / 'master.log'
         # run locally, no out info
         await init_server(str(master_conf), log=str(log))
@@ -197,15 +197,17 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
     # ensure master starts before other nodes
     results = await exec_commands(*[ s.ssh for s in start_cmds ])
 
-    addrs_loc = str(DEPLOYMENT / 'ip-addresses')
+    addrs_loc = DEPLOYMENT / 'ip-addresses'
 
     if in_ips:
-        await init_server(str(master_conf), ips=addrs_loc)
+        await init_server(
+            str(redis / 'confs' / 'master.conf'),
+            ips = str(addrs_loc))
     
     else:
         cluster_start = list(cmd_base)
-        cluster_start += ['-c', str(master_conf)]
-        cluster_start += ['-i', addrs_loc]
+        cluster_start += ['-c', str(redis / 'confs' / 'master.conf')]
+        cluster_start += ['-i', str(STORAGE_FOLDER / addrs_loc)]
         ip = ips.main[0]
         cluster_start = Remote(user, ip, cluster_start)
 
@@ -338,7 +340,7 @@ async def fetch_repo(ips: Addresses, user: str):
 
     if failed:
         logger.debug(f'pulling git for addrs {failed}')
-        pull = f'cd {STORAGE_FOLDER} && git checkout . && git pull'
+        pull = f'cd {STORAGE_FOLDER} && git pull' # && git checkout . && git pull'
         await run_ssh(pull, user, *failed)
 
 
