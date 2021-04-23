@@ -16,7 +16,7 @@ import random
 import shlex
 import socket
 
-from deployment.modifyconf import mongo_conf, redis_conf
+from deployment.modifyconf import mod_path
 from deployment.redis.start import init_server, parse_conf
 from deployment.mongodb.start import Cluster, start_mongos
 
@@ -241,7 +241,7 @@ async def mongo_start(user: str, ips: Addresses) -> List[Result]:
         if not is_selfhost(ip):
             continue
 
-        mongos_conf = DEPLOYMENT / mongo_conf('mongos.conf')
+        mongos_conf = DEPLOYMENT / mod_path('mongos.conf')
         # run locally, no resulting output
         await start_mongos(i, str(mongos_conf), cluster)
 
