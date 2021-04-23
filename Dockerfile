@@ -24,6 +24,8 @@ RUN apt-get install openssh-server sudo git -y \
 ENV USER="cc"
 ENV PASSWD="passwd"
 
+ENTRYPOINT echo $PASSWD | sudo -S service ssh start && bash
+
 RUN useradd -m $USER \
 && echo ${USER}:${PASSWD} | chpasswd \
 && adduser $USER sudo
@@ -36,6 +38,5 @@ WORKDIR /home/${USER}/
 
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir -r requirements.txt
-
-ENTRYPOINT echo $PASSWD | sudo -S service ssh start && bash
+RUN git clone https://github.com/billybimbob/storage-deployments 
 

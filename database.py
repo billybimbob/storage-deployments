@@ -185,7 +185,7 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
     if any( is_selfhost(ip) for ip in ips.main ):
         log = LOGS / 'redis' / 'master.log'
         # run locally, no out info
-        await init_server(str(master_conf), str(log))
+        await init_server(str(master_conf), log=str(log))
 
     for ip in ips.main:
         if is_selfhost(ip):

@@ -1,11 +1,46 @@
 #!/usr/bin/env python3
 
 import asyncio
+import json
+
+from argparse import ArgumentParser
 from pathlib import Path
 
-from typing import Callable, Dict, Optional, Set, Union
-from argparse import ArgumentParser
+from dataclasses import dataclass
+from typing import Callable, Dict, List, Set, Optional, Union
+
 from redis import Redis
+
+
+
+@dataclass
+class Addresses:
+    main: List[str]
+    data: List[str]
+    misc: List[str]
+
+    @classmethod
+    def from_json(cls, path: Union[str, Path]):
+        if isinstance(path, str):
+            path = Path(path)
+
+        path = path.with_suffix('.json')
+        with open(path, 'r') as f:
+            ips = json.load(f)
+
+        return cls(**ips)
+
+
+    def __bool__(self) -> bool:
+        return (bool(self.main)
+            and bool(self.data)
+            and bool(self.misc))
+
+    def __iter__(self):
+        yield from self.main
+        yield from self.data
+        yield from self.misc
+
 
 
 LineCheck = Callable[[str], bool]
@@ -36,58 +71,78 @@ def parse_conf(
             search_args -= found_args
             found_args.clear()
 
-    if any(isinstance(s, str) for s in search_args):
+    if any( isinstance(s, str) for s in search_args ):
         raise ValueError('config file is missing values')
     else:
         return parse_args
         
 
 
-def sentinel_monitor(conf: str, master: str, m_port: int):
-    conf_params = parse_conf(
-        conf, 'port', lambda l: l.startswith('sentinel'))
+# def sentinel_monitor(conf: str, master: str, m_port: int):
+#     conf_params = parse_conf(
+#         conf, 'port', lambda l: l.startswith('sentinel'))
 
-    port = int(conf_params['port'])
+#     port = int(conf_params['port'])
 
-    master_name = [
-        param
-        for param in conf_params
-        if 'monitor' in param ]
+#     master_name = [
+#         param
+#         for param in conf_params
+#         if 'monitor' in param ]
 
-    if not master_name:
-        raise ValueError('conf missing values')
+#     if not master_name:
+#         raise ValueError('conf missing values')
 
-    master_name = master_name[0].split()[0]
+#     master_name = master_name[0].split()[0]
 
-    sentinel_cmds = [
-        arg.split()[1:] # drop sentinel word
-        for arg in conf_params
-        if arg.startswith('sentinel') and 'monitor' not in arg ]
+#     sentinel_cmds = [
+#         arg.split()[1:] # drop sentinel word
+#         for arg in conf_params
+#         if arg.startswith('sentinel') and 'monitor' not in arg ]
 
-    with Redis(port=port) as cli:
-        cli.sentinel_monitor(master_name, master, m_port, 2)
+#     with Redis(port=port) as cli:
+#         cli.sentinel_monitor(master_name, master, m_port, 2)
 
-        for cmd in sentinel_cmds:
-            cli.sentinel(*cmd)
+#         for cmd in sentinel_cmds:
+#             cli.sentinel(*cmd)
+
+
+
+def create_cluster(ips: str):
+    addrs = Addresses.from_json(ips)
+    with Redis() as cli:
+        cli.cluster('create', *addrs)
 
 
 
 def touch_log(log: Union[Path, str]):
     log = Path(log)
     log.parent.mkdir(exist_ok=True, parents=True)
+
     if not log.exists():
         with open(log, 'x'): pass
 
 
-async def init_server(
-    conf: str,
-    log: Optional[str],
-    ips: Optional[str]):
 
-    redis_server = ['redis-server', conf]
+async def init_server(
+    conf: str, *,
+    log: Optional[str] = None,
+    ips: Optional[str] = None):
+
+    if log and ips:
+        raise ValueError('only one of ips and log should be specified')
     
-    if log:
-        redis_server += ['--logfile', log]
+    elif not (log or ips):
+        raise ValueError('log and ips are both not specified')
+
+    elif log:
+        redis_server = ['redis-server', conf, '--logfile', log]
+        print(f'cmd: {redis_server}')
+
+        touch_log(log)
+        await asyncio.create_subprocess_exec(*redis_server)
+    
+    elif ips:
+        create_cluster(ips)
 
     # if not sentinel and master and master_port:
     #     redis_server += ['--slaveof', master, str(master_port)]
@@ -98,15 +153,11 @@ async def init_server(
     # elif master or master_port:
     #     raise ValueError('master args missing addr or port')
 
-    touch_log(log)
 
-    print(f'cmd: {redis_server}')
-    await asyncio.create_subprocess_exec(*redis_server)
-
-    if sentinel and master and master_port:
-        await asyncio.sleep(2)
-        # might run too early
-        sentinel_monitor(conf, master, master_port)
+    # if sentinel and master and master_port:
+    #     await asyncio.sleep(2)
+    #     # might run too early
+    #     sentinel_monitor(conf, master, master_port)
 
 
 
