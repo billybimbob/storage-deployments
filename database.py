@@ -34,10 +34,17 @@ Database = Literal['redis', 'mongodb']
 
 
 def is_selfhost(ip: str):
-    self_host = socket.gethostbyaddr(socket.gethostname())[-1]
-    ip_addrs = socket.gethostbyaddr(ip)[-1]
+    self_info = socket.gethostbyaddr(socket.gethostname())
+    ip_info = socket.gethostbyaddr(ip)
 
-    return any(ip in self_host for ip in ip_addrs)
+    self_hosts = [self_info[0]] + self_info[1]
+    ip_hosts = [ip_info[0]] + ip_info[1]
+
+    self_addrs = self_info[-1]
+    ip_addrs = ip_info[-1]
+
+    return (any(ip in self_addrs for addr in ip_addrs)
+        or any(host in self_hosts for host in ip_hosts))
 
 
 @dataclass
@@ -169,7 +176,7 @@ async def run_ssh(cmd: str, user: str, *ips: str) -> List[Result]:
 
 
 async def redis_start(user: str, ips: Addresses) -> List[Result]:
-
+    local_conf = DEPLOYMENT / 'redis/confs/master.conf'
     redis = STORAGE_FOLDER / DEPLOYMENT / 'redis'
     r_log = STORAGE_FOLDER / LOGS / 'redis'
 
@@ -180,10 +187,9 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
     in_ips = any( is_selfhost(ip) for ip in ips )
 
     if in_ips:
-        master_conf = DEPLOYMENT / 'redis/confs/master.conf'
         log = LOGS / 'redis' / 'master.log'
         # run locally, no out info
-        await init_server(str(master_conf), log=str(log))
+        await init_server(str(local_conf), log=str(log))
 
     for ip in ips:
         if is_selfhost(ip):
@@ -200,10 +206,8 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
     addrs_loc = DEPLOYMENT / 'ip-addresses'
 
     if in_ips:
-        await init_server(
-            str(redis / 'confs' / 'master.conf'),
-            ips = str(addrs_loc))
-    
+        await init_server(str(local_conf), ips=str(addrs_loc))
+
     else:
         cluster_start = list(cmd_base)
         cluster_start += ['-c', str(redis / 'confs' / 'master.conf')]

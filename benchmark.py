@@ -12,7 +12,7 @@ import json
 import socket
 
 from pymongo import MongoClient
-from database import Database, STORAGE_FOLDER, run_ssh, write_results
+from database import Database, STORAGE_FOLDER, is_selfhost, run_ssh, write_results
 
 from load_generation.mongodb_load_gen import (
     Command, Operation, KEY, LOAD_SIZES, generate, operation_json)
@@ -112,9 +112,7 @@ async def remote_bench(
         await benchmarks(database, port)
         return
 
-    self_loc = socket.gethostbyname(socket.gethostname())
-
-    if self_loc == ssh.address:
+    if is_selfhost(ssh.address):
         await benchmarks(database, port)
         return
 
