@@ -63,8 +63,8 @@ async def deploy_redis():
             await exec_commands(*scp_cmds)
             await run_starts(IPS, USER, "redis")
 
-            # remote = Remote(USER, IPS.main[0])
-            # await remote_bench(remote, "redis", REDIS_MASTER_PORT)
+            remote = Remote(USER, IPS.main[0])
+            await remote_bench(remote, "redis", REDIS_MASTER_PORT)
 
             prompt = "Move on to next parameter(y/n):"
             user_input = input(prompt).lower() 
@@ -124,7 +124,7 @@ async def deploy_mongodb():
 async def main():
     await fetch_repo(IPS, USER)
     await deploy_redis()
-    await deploy_mongodb()
+    # await deploy_mongodb()
 
 
 if __name__ == "__main__":
