@@ -90,7 +90,7 @@ async def init_server(
     redis_server += ['--logfile', log]
 
     if not sentinel and master and master_port:
-        redis_server += ['--replicaof', master, str(master_port)]
+        redis_server += ['--slaveof', master, str(master_port)]
 
     elif sentinel and master and master_port:
         redis_server.append('--sentinel')
