@@ -6,6 +6,7 @@ import json
 import logging
 
 from argparse import ArgumentParser
+from os import write
 from pathlib import Path
 
 from dataclasses import dataclass
@@ -213,7 +214,7 @@ if __name__ == "__main__":
     #     type = int,
     #     help = 'port of the master node')
     
-    logging.basicConfig(filename="testing.txt")
+    logging.basicConfig(filename="testing.txt",filemode="w")
 
     args = args.parse_args()
     asyncio.run(mod_server(**vars(args)))
