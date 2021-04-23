@@ -197,7 +197,7 @@ async def redis_start(user: str, ips: Addresses) -> List[Result]:
     # ensure master starts before other nodes
     results = await exec_commands(*[ s.ssh for s in start_cmds ])
 
-    addrs_loc = str(DEPLOYMENT / 'parameter_changes.json')
+    addrs_loc = str(DEPLOYMENT / 'ip-addresses')
 
     if in_ips:
         await init_server(str(master_conf), ips=addrs_loc)
