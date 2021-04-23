@@ -170,7 +170,7 @@ async def run_ssh(cmd: str, user: str, *ips: str) -> List[Result]:
 
 
 async def redis_start(user: str, ips: Addresses) -> List[Result]:
-    master_conf = DEPLOYMENT / redis_conf('master.conf')
+    master_conf = DEPLOYMENT / mod_path('master.conf')
     conf_info = parse_conf(master_conf, 'port')
 
     master_node_port = conf_info['port']
