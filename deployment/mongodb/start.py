@@ -76,23 +76,29 @@ async def create_replica(
     log: Log):
 
     db_path = Path(log) / "db"
-    db_path.mkdir(parents=True, exist_ok=True)
-    db_path = str(db_path)
-
     log_path = Path(log)
+
+    db_path.mkdir(parents=True, exist_ok=True)
     log_path.mkdir(parents=True, exist_ok=True)
-    log_path = f"{log}/shard_{mem_idx}.txt" if is_shard else f"{log}/config_{mem_idx}.txt"
-    with open(log_path,"w"):
-        pass
+
+    db = str(db_path)
+    log = str(log_path / (
+        f'shard_{mem_idx}.log' if is_shard else 
+        f'config_{mem_idx}.log'))
+
+    with open(log, "w"): pass
+
+    binds = ['localhost', info.members[mem_idx]]
+    binds = ','.join(binds)
 
     mongod_cmd = ['mongod']
     mongod_cmd += ['--config', config]
-    mongod_cmd += ['--dbpath', db_path]
-    mongod_cmd += ['--logpath', log_path]
+    mongod_cmd += ['--dbpath', db]
+    mongod_cmd += ['--logpath', log]
     mongod_cmd += ['--shardsvr' if is_shard else '--configsvr']
     mongod_cmd += ['--replSet', info.set_name]
     mongod_cmd += ['--port', str(info.port)]
-    mongod_cmd += ['--bind_ip', 'localhost', info.members[mem_idx]]
+    mongod_cmd += ['--bind_ip', binds]
 
     print(f"mongod_cmd: {' '.join(mongod_cmd)}")
 
@@ -175,7 +181,7 @@ async def main(
     member: Optional[int]):
 
     cluster_info = Cluster.from_json(cluster)
-    print(f"cluster info here: {cluster_info}")
+    # print(f"cluster info here: {cluster_info}")
 
     if role == 'mongos' and member and config:
         await start_mongos(member, config, cluster_info)
