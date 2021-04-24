@@ -37,8 +37,8 @@ def is_selfhost(ip: str):
     self_info = socket.gethostbyaddr(socket.gethostname())
     ip_info = socket.gethostbyaddr(ip)
 
-    self_hosts = [self_info[0]] + self_info[1]
-    ip_hosts = [ip_info[0]] + ip_info[1]
+    self_hosts = [ self_info[0], *self_info[1] ]
+    ip_hosts = [ ip_info[0], *ip_info[1] ]
 
     self_addrs = self_info[-1]
     ip_addrs = ip_info[-1]
