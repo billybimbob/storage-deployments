@@ -15,11 +15,12 @@ import logging
 import json
 
 
-base = Path(__file__)
-LOG_PATH = (Path(__file__).parents[1] 
+LOG_PATH = (Path(__file__).parents[2] 
     / 'monitor_and_graphs'
     / 'logs'
     / 'mongodb')
+
+logger = logging.getLogger(__name__)
 
 
 Log = str
@@ -56,6 +57,7 @@ class Cluster:
         with open(file) as f:
             clust_data = json.load(f)
             log = clust_data['log']
+
             mongos = Mongos(**clust_data['mongos'])
             configs = ReplInfo(**clust_data['configs'])
             shards = ReplInfo(**clust_data['shards'])
@@ -146,7 +148,7 @@ async def start_mongos(mongos_idx: int, config: str, cluster: Cluster):
 
     mongos_cmd = ['mongos']
     mongos_cmd += ['--config', config]
-    mongos_cmd += ['--logpath', LOG_PATH]
+    mongos_cmd += ['--logpath', str(LOG_PATH / f"mongo_{mongos_idx}.log")]
     mongos_cmd += ['--configdb', config_set]
     mongos_cmd += ['--port', str(mongos.port)]
     mongos_cmd += ['--bind_ip', binds]
@@ -163,7 +165,7 @@ async def start_mongos(mongos_idx: int, config: str, cluster: Cluster):
 
     print('adding shards')
 
-    with MongoClient('localhost', mongos.port) as cli:
+    with MongoClient(port=mongos.port) as cli:
         cli['admin'].command("addShard", shard_set)
 
 
@@ -220,7 +222,7 @@ async def init_server(
 
 
 
-def stop_server(cluster: Cluster, role: Mongot):
+def mongodb_stop_server(cluster: Cluster, role: Mongot):
     port = cluster.as_dict()[role].port
     with MongoClient(port=port) as cli:
         try:
@@ -236,9 +238,11 @@ async def main(
     cluster: str, shutdown: bool, role: Mongot, **init_args: Any):
 
     cluster_info = Cluster.from_json(cluster)
+    
+    logger.info(shutdown)
 
     if shutdown:
-        stop_server(cluster_info, role)
+        mongodb_stop_server(cluster_info, role)
 
     else:
         await init_server(cluster_info, role, **init_args)
@@ -269,6 +273,9 @@ if __name__ == "__main__":
     args.add_argument('-s', '--shutdown',
         action = 'store_true',
         help = 'run shutdown instead of init')
+
+    logging.basicConfig(filename="test_mongo.log", filemode="w",level=logging.DEBUG)
+    logger.setLevel(level=logging.DEBUG)
 
     args = args.parse_args()
     asyncio.run(main(**vars(args)))

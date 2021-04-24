@@ -4,6 +4,7 @@ node*.conf
 load-output/
 *-mod.conf
 dump.rdb
+logs/
 *.csv
 monitor_and_graphs/logs/mongodb
 

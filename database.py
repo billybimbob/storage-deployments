@@ -17,7 +17,7 @@ import socket
 
 from deployment.modifyconf import mod_path
 from deployment.redis.start import end_server, init_server
-from deployment.mongodb.start import Cluster, start_mongos
+from deployment.mongodb.start import Cluster, start_mongos, mongodb_stop_server
 
 
 STORAGE_REPO = 'https://github.com/billybimbob/storage-deployments.git'
@@ -390,11 +390,23 @@ async def run_shutdown(
 
     elif database == 'mongodb':
         logger.debug('stopping mongo daemons')
-        shutdown = 'mongod --shutdown'
+
+        if any(is_selfhost(ip) for ip in ips):
+            cluster_loc = DEPLOYMENT / 'mongodb/cluster.json'
+            cluster = Cluster.from_json(cluster_loc)
+            mongodb_stop_server(cluster, "mongos")
+
+        main_ips = [ip for ip in ips.main if not is_selfhost(ip)]
+        misc_ips = [ip for ip in ips.misc if not is_selfhost(ip)]
+        data_ips = [ip for ip in ips.data if not is_selfhost(ip)]
+
+        mongodb = STORAGE_FOLDER / DEPLOYMENT / 'mongodb'
+        shutdown = f'./{mongodb}/start.py -c cluster.json --shutdown'
 
         # shutdown main first
-        results = await run_ssh(shutdown, user, *ips.main)
-        results += await run_ssh(shutdown, user, *ips.data, *ips.misc)
+        results = await run_ssh(f"{shutdown} -r mongos", user, *main_ips)
+        results += await run_ssh(f"{shutdown} -r configs", user, *misc_ips)
+        results += await run_ssh(f"{shutdown} -r shards", user, *data_ips)
 
     write_results(results, out)
 
