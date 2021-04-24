@@ -92,7 +92,7 @@ async def create_replica(
     mongod_cmd += ['--shardsvr' if is_shard else '--configsvr']
     mongod_cmd += ['--replSet', info.set_name]
     mongod_cmd += ['--port', str(info.port)]
-    mongod_cmd += ['--bind_ip', info.members[mem_idx]]
+    mongod_cmd += ['--bind_ip', 'localhost', info.members[mem_idx]]
 
     print(f"mongod_cmd: {' '.join(mongod_cmd)}")
 
