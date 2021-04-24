@@ -3,13 +3,11 @@
 from typing import Any, List, NamedTuple, Optional, cast
 from argparse import ArgumentParser
 from pathlib import Path
-from time import time
+from time import asctime
 
 from asyncio.subprocess import PIPE
 import asyncio as aio
-
 import json
-import socket
 
 from pymongo import MongoClient
 from database import Database, STORAGE_FOLDER, is_selfhost, run_ssh, write_results
@@ -70,16 +68,18 @@ def mongo_bench(port: int, op: Operation, size: int):
         with open(operation_json(op, size)) as f:
             cmds: List[Command] = json.load(f)
 
-        start = time()
+        start = asctime()
         for cmd in cmds:
             if 'insert' in cmd:
                 cmd['insert'] = run_col
-            elif 'aggregate' in cmd:
-                cmd['aggregate'] = run_col
+            # elif 'aggregate' in cmd:
+            #     cmd['aggregate'] = run_col
+            elif 'find' in cmd:
+                cmd['find'] = run_col
 
             db.command(cmd)
 
-        end = time()
+        end = asctime()
         with open(TIMESTAMP, 'a+') as f:
             f.write(f'bench {op}: {size} started {start}, ended {end}\n')
 
