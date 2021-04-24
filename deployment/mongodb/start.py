@@ -146,9 +146,13 @@ async def start_mongos(mongos_idx: int, config: str, cluster: Cluster):
     binds = ['localhost', mongos.members[mongos_idx]]
     binds = ','.join(binds)
 
+    log = LOG_PATH / f"mongo_{mongos_idx}.log"
+    log.parent.mkdir(exist_ok=True, parents=True)
+    with open(log, 'w'): pass
+
     mongos_cmd = ['mongos']
     mongos_cmd += ['--config', config]
-    mongos_cmd += ['--logpath', str(LOG_PATH / f"mongo_{mongos_idx}.log")]
+    mongos_cmd += ['--logpath', str(log)]
     mongos_cmd += ['--configdb', config_set]
     mongos_cmd += ['--port', str(mongos.port)]
     mongos_cmd += ['--bind_ip', binds]
@@ -195,7 +199,7 @@ async def init_server(
     member: Optional[int],
     config: Optional[str]):
 
-    # print(f"cluster info here: {cluster_info}")
+    print(f"cluster info here: {cluster}")
     LOG_PATH.mkdir(exist_ok=True, parents=True)
 
     if role == 'mongos' and config and member is not None:

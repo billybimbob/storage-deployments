@@ -27,6 +27,8 @@ STORAGE_FOLDER = PurePosixPath( PurePath(STORAGE_REPO).stem )
 DEPLOYMENT = Path('deployment')
 LOGS = Path('monitor_and_graphs') / 'logs'
 
+SETUP_TIMEOUT = 15
+
 logger = logging.getLogger(__name__)
 
 
@@ -271,20 +273,23 @@ async def mongo_remotes(user: str, ips: Addresses):
         cmd = list(cmd_base)
         cmd += ['-r', 'configs']
         cmd += ['-m', str(i)]
-        cmd += ['-c', 'config.conf']
+        cmd += ['-f', 'config.conf']
         start_cmds.append( Remote(user, ip, cmd) )
 
     for i, ip in enumerate(ips.data):
         cmd = list(cmd_base)
         cmd += ['-r', 'shards']
         cmd += ['-m', str(i)]
-        cmd += ['-c', 'shard.conf']
+        cmd += ['-f', 'shard.conf']
         start_cmds.append( Remote(user, ip, cmd) )
-
+    
+    logger.info(start_cmds)
+    
     results = await exec_commands(*[ s.ssh for s in start_cmds ])
 
     # add initiate cmds
     start_cmds.clear()
+    await aio.sleep(SETUP_TIMEOUT)
 
     if ips.misc:
         cmd = list(cmd_base)
@@ -295,6 +300,8 @@ async def mongo_remotes(user: str, ips: Addresses):
         cmd = list(cmd_base)
         cmd += ['-r', 'shards']
         start_cmds.append( Remote(user, ips.data[0], cmd) )
+    
+    logger.info(start_cmds)
 
     results += await exec_commands(*[ s.ssh for s in start_cmds ])
 
@@ -308,8 +315,10 @@ async def mongo_remotes(user: str, ips: Addresses):
         cmd = list(cmd_base)
         cmd += ['-r', 'mongos']
         cmd += ['-m', str(i)]
-        cmd += ['-c', 'mongos.conf'] # should be top level from scp
+        cmd += ['-f', 'mongos.conf'] # should be top level from scp
         start_cmds.append( Remote(user, ip, cmd) )
+
+    logger.info(start_cmds)
 
     results += await exec_commands(*[ s.ssh for s in start_cmds ])
 

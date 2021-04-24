@@ -56,13 +56,17 @@ def mongo_bench(port: int, op: Operation, size: int):
     run_db = 'test-db'
     run_col = 'test-col1'
 
+    if not out.exists():
+        # connect to primary data node, should pass in cluster
+        pass
+
     with MongoClient(port=port) as cli:
         admin = cli['admin']
 
-        if not out.exists():
-            monitor = admin.command("getFreeMonitoringStatus")
-            with open(out, 'w') as f:
-                f.write(f'monitoring state: {monitor}')
+        # if not out.exists():
+            # monitor = admin.command("getFreeMonitoringStatus")
+            # with open(out, 'w') as f:
+                # f.write(f'monitoring state: {monitor}')
 
         if op == 'write':
             # not sure if multiple calls is ok
