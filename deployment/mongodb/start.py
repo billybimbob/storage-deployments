@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 from argparse import ArgumentParser
-from dataclasses import asdict, astuple, dataclass
-import logging
+from dataclasses import dataclass
 from pathlib import Path
-from re import S
 from typing import (
-    Any, Dict, List, Literal, Optional, Tuple, TypedDict, Union, cast)
+    Any, Dict, List, Literal, Optional, TypedDict, Union)
 
 from pymongo import MongoClient
 from asyncio.subprocess import PIPE
 import asyncio
+
+import logging
 import json
+
+
+base = Path(__file__)
+LOG_PATH = (Path(__file__).parents[1] 
+    / 'monitor_and_graphs'
+    / 'logs'
+    / 'mongodb')
 
 
 Log = str
@@ -75,8 +82,8 @@ async def create_replica(
     is_shard: bool,
     log: Log):
 
-    db_path = Path(log) / "db"
-    log_path = Path(log)
+    db_path = LOG_PATH / "db"
+    log_path = LOG_PATH
 
     db_path.mkdir(parents=True, exist_ok=True)
     log_path.mkdir(parents=True, exist_ok=True)
@@ -125,7 +132,7 @@ def initiate(info: ReplInfo, configsvr: bool):
 
 
 async def start_mongos(mongos_idx: int, config: str, cluster: Cluster):
-    log, mongos, configs, shards = cluster.as_tuple()
+    _, mongos, configs, shards = cluster.as_tuple()
     # log = cluster.log
     # mongos = cluster.mongos
     # configs = cluster.configs
@@ -134,12 +141,17 @@ async def start_mongos(mongos_idx: int, config: str, cluster: Cluster):
     config_locs = [ f"{c}:{configs.port}" for c in configs.members ]
     config_set = f"{configs.set_name}/{','.join(config_locs)}"
 
+    binds = ['localhost', mongos.members[mongos_idx]]
+    binds = ','.join(binds)
+
     mongos_cmd = ['mongos']
     mongos_cmd += ['--config', config]
-    mongos_cmd += ['--logpath', log]
+    mongos_cmd += ['--logpath', LOG_PATH]
     mongos_cmd += ['--configdb', config_set]
     mongos_cmd += ['--port', str(mongos.port)]
-    mongos_cmd += ['--bind_ip', mongos.members[mongos_idx]]
+    mongos_cmd += ['--bind_ip', binds]
+
+    print(f"mongos cmd: {' '.join(mongos_cmd)}")
 
     await asyncio.create_subprocess_exec(*mongos_cmd, stdout=PIPE)
 
@@ -148,6 +160,8 @@ async def start_mongos(mongos_idx: int, config: str, cluster: Cluster):
 
     shard_set = [ f"{s}:{shards.port}" for s in shards.members ]
     shard_set = f"{shards.set_name}/{','.join(shard_set)}"
+
+    print('adding shards')
 
     with MongoClient('localhost', mongos.port) as cli:
         cli['admin'].command("addShard", shard_set)
@@ -173,37 +187,62 @@ async def start_mongos(mongos_idx: int, config: str, cluster: Cluster):
 #         return Cluster(**cluster)
 
 
+async def init_server(
+    cluster: Cluster,
+    role: Mongot,
+    member: Optional[int],
+    config: Optional[str]):
 
-async def main(
-    cluster: str,
-    config: Optional[str],
-    role: Mongot, 
-    member: Optional[int]):
-
-    cluster_info = Cluster.from_json(cluster)
     # print(f"cluster info here: {cluster_info}")
+    LOG_PATH.mkdir(exist_ok=True, parents=True)
 
-    if role == 'mongos' and member and config:
-        await start_mongos(member, config, cluster_info)
+    if role == 'mongos' and config and member is not None:
+        await start_mongos(member, config, cluster)
 
     elif role == 'mongos':
         raise ValueError('mongos missing some args')
 
     elif member is None:
         initiate(
-            cluster_info.as_dict()[role],
+            cluster.as_dict()[role],
             role == 'configs')
 
     elif config:
         await create_replica(
             member,
             config,
-            cluster_info.as_dict()[role],
+            cluster.as_dict()[role],
             role == 'shards',
-            cluster_info.log)
+            cluster.log)
 
     else:
         raise ValueError('some expected args are missing')
+
+
+
+def stop_server(cluster: Cluster, role: Mongot):
+    port = cluster.as_dict()[role].port
+    with MongoClient(port=port) as cli:
+        try:
+            # shutdown will throw error
+            cli['admin'].command('shutdown')
+
+        except Exception:
+            pass
+
+
+
+async def main(
+    cluster: str, shutdown: bool, role: Mongot, **init_args: Any):
+
+    cluster_info = Cluster.from_json(cluster)
+
+    if shutdown:
+        stop_server(cluster_info, role)
+
+    else:
+        await init_server(cluster_info, role, **init_args)
+
 
 
 
@@ -226,6 +265,10 @@ if __name__ == "__main__":
         choices = ['mongos', 'configs', 'shards'],
         required = True,
         help = 'the cluster role being modified')
+
+    args.add_argument('-s', '--shutdown',
+        action = 'store_true',
+        help = 'run shutdown instead of init')
 
     args = args.parse_args()
     asyncio.run(main(**vars(args)))

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import (
     Any, List, Literal, NamedTuple, Optional, Sequence, Tuple, Union)
 from pathlib import Path, PurePath, PurePosixPath
@@ -256,7 +256,7 @@ def update_cluster(cluster_loc: Path, ips: Addresses) -> Cluster:
     cluster.shards.members = ips.data
 
     with open(cluster_loc, 'r+') as f:
-        json.dump(cluster.as_dict(), f, indent=4)
+        json.dump(asdict(cluster), f, indent=4)
 
     return cluster
 
