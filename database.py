@@ -276,6 +276,15 @@ async def mongo_remotes(user: str, ips: Addresses):
         cmd += ['-f', 'config.conf']
         start_cmds.append( Remote(user, ip, cmd) )
 
+    results = await exec_commands(*[ s.ssh for s in start_cmds ])
+
+    prompt = "Move on from configs (y/n):"
+    user_input = input(prompt).lower() 
+    while user_input != 'y':
+        await aio.sleep(1)
+    
+    start_cmds.clear()
+
     for i, ip in enumerate(ips.data):
         cmd = list(cmd_base)
         cmd += ['-r', 'shards']
@@ -283,29 +292,41 @@ async def mongo_remotes(user: str, ips: Addresses):
         cmd += ['-f', 'shard.conf']
         start_cmds.append( Remote(user, ip, cmd) )
     
-    logger.info(start_cmds)
-    
-    results = await exec_commands(*[ s.ssh for s in start_cmds ])
+    results += await exec_commands(*[ s.ssh for s in start_cmds ])
 
-    # add initiate cmds
+    prompt = "Move on from shards (y/n):"
+    user_input = input(prompt).lower() 
+    while user_input != 'y':
+        await aio.sleep(1)
+    
     start_cmds.clear()
-    await aio.sleep(SETUP_TIMEOUT)
 
     if ips.misc:
         cmd = list(cmd_base)
         cmd += ['-r', 'configs']
         start_cmds.append( Remote(user, ips.misc[0], cmd) )
+    
+    results += await exec_commands(*[ s.ssh for s in start_cmds ])
+
+    prompt = "Move on from config init (y/n):"
+    user_input = input(prompt).lower() 
+    while user_input != 'y':
+        await aio.sleep(1)
+    
+    start_cmds.clear()
 
     if ips.data:
         cmd = list(cmd_base)
         cmd += ['-r', 'shards']
         start_cmds.append( Remote(user, ips.data[0], cmd) )
     
-    logger.info(start_cmds)
-
     results += await exec_commands(*[ s.ssh for s in start_cmds ])
 
-    # make sure mongos starts after repl init ran
+    prompt = "Move on from shards init (y/n):"
+    user_input = input(prompt).lower() 
+    while user_input != 'y':
+        await aio.sleep(1)
+    
     start_cmds.clear()
 
     for i, ip in enumerate(ips.main):
