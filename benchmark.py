@@ -20,6 +20,7 @@ from load_generation.mongodb_load_gen import (
 
 
 GEN_PATH = Path('load_generation')
+TIMESTAMP = GEN_PATH / 'mongo-timestamps.log' 
 
 class Remote(NamedTuple):
     user: str
@@ -52,21 +53,11 @@ async def redis_bench(port: int, op: Operation, requests: int):
 
 
 def mongo_bench(port: int, op: Operation, size: int):
-    out = GEN_PATH / 'mongo-timestamps.txt'
     run_db = 'test-db'
     run_col = 'test-col1'
 
-    if not out.exists():
-        # connect to primary data node, should pass in cluster
-        pass
-
     with MongoClient(port=port) as cli:
         admin = cli['admin']
-
-        # if not out.exists():
-            # monitor = admin.command("getFreeMonitoringStatus")
-            # with open(out, 'w') as f:
-                # f.write(f'monitoring state: {monitor}')
 
         if op == 'write':
             # not sure if multiple calls is ok
@@ -83,18 +74,26 @@ def mongo_bench(port: int, op: Operation, size: int):
         for cmd in cmds:
             if 'insert' in cmd:
                 cmd['insert'] = run_col
+            elif 'aggregate' in cmd:
+                cmd['aggregate'] = run_col
 
             db.command(cmd)
 
         end = time()
-        with open(out, 'r+') as f:
-            f.write(f'bench {op}: {size} started {start}, ended {end}')
+        with open(TIMESTAMP, 'a+') as f:
+            f.write(f'bench {op}: {size} started {start}, ended {end}\n')
 
         if op == 'read':
             db.drop_collection(run_col)
 
 
 async def benchmarks(database: Database, port: int):
+    with open(TIMESTAMP, 'w'):
+        # connect to primary data node, should pass in cluster
+        # monitor = admin.command("getFreeMonitoringStatus")
+        # f.write(f'monitoring state: {monitor}')
+        pass
+
     if database == 'mongodb':
         generate(overwrite=False)
 
