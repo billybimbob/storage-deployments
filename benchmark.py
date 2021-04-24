@@ -97,7 +97,8 @@ async def benchmarks(database: Database, port: int):
     if database == 'mongodb':
         generate(overwrite=False)
 
-    for op in cast(List[Operation], ['write', 'read', 'meta']):
+    # for op in cast(List[Operation], ['write', 'read', 'meta']):
+    for op in cast(List[Operation], ['write', 'read']):
         for size in LOAD_SIZES:
 
             if database == 'redis':

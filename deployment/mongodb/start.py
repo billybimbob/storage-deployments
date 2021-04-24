@@ -13,6 +13,7 @@ import asyncio
 
 import logging
 import json
+import sys
 
 
 LOG_PATH = (Path(__file__).parents[2] 
@@ -199,8 +200,13 @@ async def init_server(
     member: Optional[int],
     config: Optional[str]):
 
-    print(f"cluster info here: {cluster}")
+    # print(f"cluster info here: {cluster}")
     LOG_PATH.mkdir(exist_ok=True, parents=True)
+    
+    logging.info(cluster)
+    logging.info(role)
+    logging.info(member)
+    logging.info(config)
 
     if role == 'mongos' and config and member is not None:
         await start_mongos(member, config, cluster)
@@ -278,5 +284,6 @@ if __name__ == "__main__":
     logging.basicConfig(filename="test_mongo.log", filemode="w",level=logging.DEBUG)
     logger.setLevel(level=logging.DEBUG)
 
+    logger.debug(f'call: {sys.argv}')
     args = args.parse_args()
     asyncio.run(main(**vars(args)))
