@@ -1,24 +1,23 @@
 {
-    "log": "storage-deployments/monitor_and_graphs/logs/mongodb",
     "mongos": {
         "port": 27017,
         "members": [
-            "10.52.0.172"
+            "10.52.3.13"
         ]
     },
     "configs": {
         "set_name": "configSet",
         "port": 27019,
         "members": [
-            "10.52.3.53"
+            "10.52.3.172"
         ]
     },
     "shards": {
         "set_name": "shardSet",
         "port": 27018,
         "members": [
-            "10.52.1.96",
-            "10.52.3.206"
+            "10.52.2.227",
+            "10.52.2.166"
         ]
     }
 }

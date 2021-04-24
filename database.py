@@ -45,7 +45,7 @@ def is_selfhost(ip: str):
     self_addrs = self_info[-1]
     ip_addrs = ip_info[-1]
 
-    return (any(ip in self_addrs for addr in ip_addrs)
+    return (any(addr in self_addrs for addr in ip_addrs)
         or any(host in self_hosts for host in ip_hosts))
 
 
@@ -249,15 +249,15 @@ async def mongo_start(user: str, ips: Addresses) -> List[Result]:
 
 
 def update_cluster(cluster_loc: Path, ips: Addresses) -> Cluster:
-    m_log = STORAGE_FOLDER / LOGS / 'mongodb'
+    # m_log = STORAGE_FOLDER / LOGS / 'mongodb'
     cluster = Cluster.from_json(cluster_loc)
 
-    cluster.log = str(m_log)
+    # cluster.log = str(m_log)
     cluster.mongos.members = ips.main
     cluster.configs.members = ips.misc
     cluster.shards.members = ips.data
 
-    with open(cluster_loc, 'r+') as f:
+    with open(cluster_loc, 'w') as f:
         json.dump(asdict(cluster), f, indent=4)
 
     return cluster

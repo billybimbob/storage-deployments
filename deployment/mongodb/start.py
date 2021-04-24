@@ -41,13 +41,13 @@ Mongot = Literal['mongos', 'configs', 'shards']
 
 @dataclass
 class Cluster:
-    log: Log
+    # log: Log
     mongos: Mongos
     configs: ReplInfo
     shards: ReplInfo
 
     class Dict(TypedDict):
-        log: Log
+        # log: Log
         mongos: Mongos
         configs: ReplInfo
         shards: ReplInfo
@@ -56,24 +56,29 @@ class Cluster:
     def from_json(cls, file: Union[str, Path]):
         with open(file) as f:
             clust_data = json.load(f)
-            log = clust_data['log']
+            # log = clust_data['log']
 
             mongos = Mongos(**clust_data['mongos'])
             configs = ReplInfo(**clust_data['configs'])
             shards = ReplInfo(**clust_data['shards'])
 
             return Cluster(
-                log = log,
+                # log = log,
                 mongos = mongos,
                 configs = configs,
                 shards = shards)
 
 
     def as_tuple(self):
-        return self.log, self.mongos, self.configs, self.shards
+        # return self.log, self.mongos, self.configs, self.shards
+        return self.mongos, self.configs, self.shards
 
     def as_dict(self):
-        return Cluster.Dict(log=self.log, mongos=self.mongos, configs=self.configs, shards=self.shards)
+        return Cluster.Dict(
+            # log = self.log,
+            mongos = self.mongos,
+            configs = self.configs,
+            shards = self.shards)
 
 
 
@@ -81,8 +86,7 @@ async def create_replica(
     mem_idx: int,
     config: str,
     info: ReplInfo,
-    is_shard: bool,
-    log: Log):
+    is_shard: bool):
 
     db_path = LOG_PATH / "db"
     log_path = LOG_PATH
@@ -109,7 +113,7 @@ async def create_replica(
     mongod_cmd += ['--port', str(info.port)]
     mongod_cmd += ['--bind_ip', binds]
 
-    print(f"mongod_cmd: {' '.join(mongod_cmd)}")
+    logger.debug(f"mongod_cmd: {' '.join(mongod_cmd)}")
 
     await asyncio.create_subprocess_exec(*mongod_cmd, stdout=PIPE)
 
@@ -134,11 +138,7 @@ def initiate(info: ReplInfo, configsvr: bool):
 
 
 async def start_mongos(mongos_idx: int, config: str, cluster: Cluster):
-    _, mongos, configs, shards = cluster.as_tuple()
-    # log = cluster.log
-    # mongos = cluster.mongos
-    # configs = cluster.configs
-    # shards = cluster.shards
+    mongos, configs, shards = cluster.as_tuple()
 
     config_locs = [ f"{c}:{configs.port}" for c in configs.members ]
     config_set = f"{configs.set_name}/{','.join(config_locs)}"
@@ -157,7 +157,7 @@ async def start_mongos(mongos_idx: int, config: str, cluster: Cluster):
     mongos_cmd += ['--port', str(mongos.port)]
     mongos_cmd += ['--bind_ip', binds]
 
-    print(f"mongos cmd: {' '.join(mongos_cmd)}")
+    logger.debug(f"mongos cmd: {' '.join(mongos_cmd)}")
 
     await asyncio.create_subprocess_exec(*mongos_cmd, stdout=PIPE)
 
@@ -167,7 +167,7 @@ async def start_mongos(mongos_idx: int, config: str, cluster: Cluster):
     shard_set = [ f"{s}:{shards.port}" for s in shards.members ]
     shard_set = f"{shards.set_name}/{','.join(shard_set)}"
 
-    print('adding shards')
+    logger.debug(f'adding shards {shard_set}')
 
     with MongoClient(port=mongos.port) as cli:
         cli['admin'].command("addShard", shard_set)
@@ -218,8 +218,7 @@ async def init_server(
             member,
             config,
             cluster.as_dict()[role],
-            role == 'shards',
-            cluster.log)
+            role == 'shards')
 
     else:
         raise ValueError('some expected args are missing')
@@ -242,12 +241,10 @@ async def main(
     cluster: str, shutdown: bool, role: Mongot, **init_args: Any):
 
     cluster_info = Cluster.from_json(cluster)
-    
     logger.info(shutdown)
 
     if shutdown:
         mongodb_stop_server(cluster_info, role)
-
     else:
         await init_server(cluster_info, role, **init_args)
 

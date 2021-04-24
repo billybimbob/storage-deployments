@@ -34,9 +34,11 @@ def add_write_operations(operations: List[Command]):
 
 def add_read_operations(operations: List[Command]):  
     operations.append({
-        "aggregate": "", # collection name specified later
-        "pipeline": [{ "$sample": {"size": 1} }],
-        "cursor": {}
+        # "aggregate": "", # collection name specified later
+        # "pipeline": [{ "$sample": {"size": 1} }],
+        # "cursor": {}
+        "find": "",
+        
     })
 
 
