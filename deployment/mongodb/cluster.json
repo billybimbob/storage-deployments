@@ -2,21 +2,22 @@
     "mongos": {
         "port": 27017,
         "members": [
-            "10.52.3.13"
+            "10.52.3.94"
         ]
     },
     "configs": {
         "set_name": "configSet",
         "port": 27019,
         "members": [
-            "10.52.3.172"
+            "10.52.0.192"
         ]
     },
     "shards": {
         "set_name": "shardSet",
         "port": 27018,
         "members": [
-            "10.52.2.166"
+            "10.52.3.36",
+            "10.52.2.132"
         ]
     }
 }
