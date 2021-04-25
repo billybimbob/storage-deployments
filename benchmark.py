@@ -88,7 +88,7 @@ def mongo_bench(port: int, op: Operation, size: int):
 
 
 async def benchmarks(database: Database, port: int):
-    with open(TIMESTAMP, 'w'):
+    with open(TIMESTAMP, 'w+'):
         # connect to primary data node, should pass in cluster
         # monitor = admin.command("getFreeMonitoringStatus")
         # f.write(f'monitoring state: {monitor}')
