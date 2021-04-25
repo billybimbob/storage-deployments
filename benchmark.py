@@ -18,7 +18,7 @@ from load_generation.mongodb_load_gen import (
 
 
 
-GEN_PATH = Path(os.path.realpath(__file__))
+GEN_PATH = Path(os.path.realpath(__file__)).parents[1] / 'load_generation'
 TIMESTAMP = GEN_PATH / 'mongo-timestamps.log' 
 
 class Remote(NamedTuple):
