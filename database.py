@@ -278,10 +278,10 @@ async def mongo_remotes(user: str, ips: Addresses):
 
     results = await exec_commands(*[ s.ssh for s in start_cmds ])
 
-    prompt = "Move on from configs (y/n):"
-    user_input = input(prompt).lower() 
-    while user_input != 'y':
-        await aio.sleep(1)
+    # prompt = "Move on from configs (y/n):"
+    # user_input = input(prompt).lower() 
+    # while user_input != 'y':
+    #     await aio.sleep(1)
     
     start_cmds.clear()
 
@@ -294,10 +294,10 @@ async def mongo_remotes(user: str, ips: Addresses):
     
     results += await exec_commands(*[ s.ssh for s in start_cmds ])
 
-    prompt = "Move on from shards (y/n):"
-    user_input = input(prompt).lower() 
-    while user_input != 'y':
-        await aio.sleep(1)
+    # prompt = "Move on from shards (y/n):"
+    # user_input = input(prompt).lower() 
+    # while user_input != 'y':
+    #     await aio.sleep(1)
     
     start_cmds.clear()
 
@@ -308,10 +308,10 @@ async def mongo_remotes(user: str, ips: Addresses):
     
     results += await exec_commands(*[ s.ssh for s in start_cmds ])
 
-    prompt = "Move on from config init (y/n):"
-    user_input = input(prompt).lower() 
-    while user_input != 'y':
-        await aio.sleep(1)
+    # prompt = "Move on from config init (y/n):"
+    # user_input = input(prompt).lower() 
+    # while user_input != 'y':
+    #     await aio.sleep(1)
     
     start_cmds.clear()
 
@@ -322,10 +322,10 @@ async def mongo_remotes(user: str, ips: Addresses):
     
     results += await exec_commands(*[ s.ssh for s in start_cmds ])
 
-    prompt = "Move on from shards init (y/n):"
-    user_input = input(prompt).lower() 
-    while user_input != 'y':
-        await aio.sleep(1)
+    # prompt = "Move on from shards init (y/n):"
+    # user_input = input(prompt).lower() 
+    # while user_input != 'y':
+    #     await aio.sleep(1)
     
     start_cmds.clear()
 
