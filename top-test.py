@@ -1,8 +1,9 @@
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
+from pathlib import Path
 
-import asyncio as aio
 from asyncio.subprocess import PIPE
+import asyncio as aio
 
 import shlex
 import json
@@ -12,61 +13,69 @@ async def top():
     top = await aio.create_subprocess_exec(
         *shlex.split('mongotop --json 2'), stdout=PIPE)
         
-    try:
-        if top.stdout is None:
-            raise RuntimeError('stdout is not defined to a pipe')
-
-        print('staring write proc')
-        # write = aio.create_task(write_top(top.stdout, 2))
-
-        # do some other stuff ...
-        await aio.sleep(5)
-        # write.cancel()
-
-    finally:
+    if top.stdout is None:
         top.terminate()
-        ret, _ = await top.communicate()
+        raise RuntimeError('stdout is not defined to a pipe')
 
-    ret = ret.decode()
-    # ret = await top.wait()
+    write = aio.create_task(write_top(top.stdout))
+
+    # do some other stuff ...
+    await aio.sleep(5)
+
+    top.kill()
+    ret = await aio.gather(top.wait(), write)
+
     print(f'finished with {ret=}')
 
 
 
-async def write_top(top_stream: aio.StreamReader, interval: int):
-    flush_count = 5
+async def write_top(top_stream: aio.StreamReader):
+    READ_LIMIT = 20
+    TOP_STORE = Path('out.json')
+
     count = 0
+    outs: List[Dict[str, Any]] = []
+    print('writing task started')
+
     try:
-        print('writing task started')
-        outs: List[Dict[str, Any]] = []
+        with open(TOP_STORE, 'w') as f:
+            json.dump([], f)
+
         while True:
-            top_data = await top_stream.read()
-            top_data = top_data.decode() # need newline splits
-            print(f'got data {top_data}')
+            top_data = await top_stream.readuntil(b'\n')
+            top_data = json.loads(top_data)
 
-            for obj in top_data.split('\n'):
-                outs += json.loads(obj)
-
-            if count == flush_count:
-                count = 0
-
-            if count == 0:
-                update_out('out.json', outs)
-                outs.clear()
-
+            # print(f'got data {top_data}')
+            outs.append(top_data)
             count += 1
 
-            await aio.sleep(interval)
+            if count == READ_LIMIT:
+                flush(outs, TOP_STORE)
+                outs.clear()
+                count = 0
 
-    except aio.CancelledError:
+    except aio.IncompleteReadError:
         pass
 
+    except aio.CancelledError:
+        rest_top = await top_stream.read()
+        for line in rest_top.split(b'\n'):
+            if not line:
+                continue
 
-def update_out(out_file: str, new_data: List[Dict[str, Any]]):
-    print(f'flushing out {new_data=}')
-    with open(out_file, 'r+') as f:
-        data: List[Dict[str, Any]]= json.load(f) + new_data
+            outs.append(json.loads(line))
+
+    finally:
+        flush(outs, TOP_STORE)
+
+
+
+def flush(new_data: List[Dict[str, Any]], target: Union[str, Path]):
+    with open(target, 'r+') as f:
+        data: List[Dict[str, Any]] = json.load(f) + new_data
+        f.seek(0)
         json.dump(data, f, indent=4)
+
 
 
 if __name__ == '__main__':
