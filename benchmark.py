@@ -63,7 +63,6 @@ def mongo_bench(port: int, op: Operation, size: int):
     run_col = 'test-col1'
 
     with MongoClient(port=port) as cli:
-
         admin = cli['admin']
 
         if op == 'write':
@@ -92,8 +91,6 @@ def mongo_bench(port: int, op: Operation, size: int):
         with open(TIMESTAMP, 'a+') as f:
             f.write(f'bench {op}: {size} started {start}, ended {end}\n')
 
-        if op == 'read':
-            db.drop_collection(run_col)
 
 
 async def redis_bench_combos(port: int):
@@ -117,7 +114,8 @@ async def mongo_bench_combos(port: int):
         print(f"{monitor=}")
 
 
-    for op in cast(List[Operation], ['write', 'read', 'meta']):
+    # for op in cast(List[Operation], ['write', 'read', 'meta']):
+    for op in cast(List[Operation], ['write', 'read']):
         for size in LOAD_SIZES:
 
             TOP_FILES.mkdir(parents=True, exist_ok=True)
@@ -125,6 +123,13 @@ async def mongo_bench_combos(port: int):
 
             async with await mongo_top(top_run, data1, shards.port):
                 mongo_bench(port, op, size)
+
+
+        # if op == 'read':
+        #     with MongoClient(port=port) as cli:
+        #         pass
+            # db.drop_collection(run_col)
+
 
 
 
