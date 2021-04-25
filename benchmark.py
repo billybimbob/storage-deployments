@@ -8,6 +8,7 @@ from time import asctime
 from asyncio.subprocess import PIPE
 import asyncio as aio
 import json
+import os
 
 from pymongo import MongoClient
 from database import Database, STORAGE_FOLDER, is_selfhost, run_ssh, write_results
@@ -17,7 +18,7 @@ from load_generation.mongodb_load_gen import (
 
 
 
-GEN_PATH = Path('load_generation')
+GEN_PATH = Path(os.path.realpath(__file__))
 TIMESTAMP = GEN_PATH / 'mongo-timestamps.log' 
 
 class Remote(NamedTuple):
