@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from monitor_and_graphs.mongotop import MongoTop
 from typing import Any, List, NamedTuple, Optional, cast
 from argparse import ArgumentParser
 from pathlib import Path
@@ -20,6 +21,7 @@ from load_generation.mongodb_load_gen import (
 
 GEN_PATH = Path(os.path.realpath(__file__)).parents[0] / 'load_generation'
 TIMESTAMP = GEN_PATH / 'mongo-timestamps.log' 
+TOP_FILES = GEN_PATH / 'mongotops'
 
 class Remote(NamedTuple):
     user: str
@@ -102,11 +104,16 @@ async def benchmarks(database: Database, port: int):
     for op in cast(List[Operation], ['write', 'read', 'meta']):
         for size in LOAD_SIZES:
 
+            top_run = TOP_FILES / f'top-{op}{size}.json'
+            top = await MongoTop.start(top_run)
+
             if database == 'redis':
                 await redis_bench(port, op, size)
 
             elif database == 'mongodb':
                 mongo_bench(port, op, size)
+
+            await top.stop()
 
 
 
