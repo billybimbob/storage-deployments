@@ -1,4 +1,5 @@
 
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
 from pathlib import Path
 
@@ -10,45 +11,41 @@ import json
 READ_LIMIT = 20
 
 
+@dataclass
 class MongoTop:
     _proc: proc.Process
     _writer: aio.Task
 
-    def __init__(self, proc: proc.Process, writer: aio.Task):
-        self._proc = proc
-        self._writer = writer
-
-
-    @classmethod
-    async def start(
-        cls,
-        file: Union[str, Path],
-        host: Optional[str] = None,
-        port: Optional[int] = None):
-
-        cmd = ['mongotop']
-        if host is not None:
-            cmd += ['--host', host]
-        
-        if port is not None:
-            cmd += ['--port', str(port)]
-
-        cmd += ['--json', '2']
-
-        print(f'{cmd=}')
-        top = await aio.create_subprocess_exec(*cmd, stdout=proc.PIPE)
-            
-        if top.stdout is None:
-            top.kill()
-            raise RuntimeError('stdout is not defined to a pipe')
-
-        waiter = aio.create_task(write_top(top.stdout, file))
-        return cls(top, waiter)
-
-
     async def stop(self):
         self._proc.kill()
         await aio.gather(self._proc.wait(), self._writer)
+
+
+
+async def mongo_top(
+    file: Union[str, Path],
+    host: Optional[str] = None,
+    port: Optional[int] = None):
+
+    cmd = ['mongotop']
+    if host is not None:
+        cmd += ['--host', host]
+    
+    if port is not None:
+        cmd += ['--port', str(port)]
+
+    cmd += ['--json', '2']
+
+    print(f'{cmd=}')
+    top = await aio.create_subprocess_exec(*cmd, stdout=proc.PIPE)
+        
+    if top.stdout is None:
+        top.kill()
+        raise RuntimeError('stdout is not defined to a pipe')
+
+    waiter = aio.create_task(write_top(top.stdout, file))
+
+    return MongoTop(top, waiter)
 
 
 
@@ -104,7 +101,7 @@ def flush(new_data: List[Dict[str, Any]], target: Union[str, Path]):
 
 
 async def test_top():
-    top = await MongoTop.start('out.json')
+    top = await mongo_top('out.json')
     await aio.sleep(5)
     await top.stop()
 

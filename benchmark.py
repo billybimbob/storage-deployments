@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-from monitor_and_graphs.mongotop import MongoTop
 from typing import Any, List, NamedTuple, Optional, cast
 from argparse import ArgumentParser
 from pathlib import Path
@@ -14,6 +13,7 @@ import os
 from pymongo import MongoClient
 from database import Database, STORAGE_FOLDER, is_selfhost, run_ssh, write_results
 
+from monitor_and_graphs.mongotop import mongo_top
 from load_generation.mongodb_load_gen import (
     Command, Operation, KEY, LOAD_SIZES, generate, operation_json)
 
@@ -105,7 +105,7 @@ async def benchmarks(database: Database, port: int):
         for size in LOAD_SIZES:
 
             top_run = TOP_FILES / f'top-{op}{size}.json'
-            top = await MongoTop.start(top_run)
+            top = await mongo_top(top_run)
 
             if database == 'redis':
                 await redis_bench(port, op, size)
