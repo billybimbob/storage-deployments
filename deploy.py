@@ -110,8 +110,8 @@ async def deploy_mongodb():
             await exec_commands(*scp_cmds)
             await run_starts(IPS, USER, "mongodb")
 
-            remote = Remote(USER, IPS.main[0])
-            await remote_bench(remote, "mongodb", MONGO_MASTER_PORT)
+            # remote = Remote(USER, IPS.main[0])
+            await remote_bench(None, "mongodb", MONGO_MASTER_PORT)
 
             prompt = "Move on to next parameter(y/n):"
             user_input = input(prompt).lower()

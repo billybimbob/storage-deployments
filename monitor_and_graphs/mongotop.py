@@ -16,6 +16,13 @@ class MongoTop:
     _proc: proc.Process
     _writer: aio.Task
 
+    async def __aenter__(self):
+        return None
+
+    async def __aexit__(self, exp: None, val: None, trace: None):
+        # all none, since don't handle traceback
+        await self.stop()
+
     async def stop(self):
         self._proc.kill()
         await aio.gather(self._proc.wait(), self._writer)
@@ -43,6 +50,7 @@ async def mongo_top(
         top.kill()
         raise RuntimeError('stdout is not defined to a pipe')
 
+    print(f"HERE1:       {file}")
     waiter = aio.create_task(write_top(top.stdout, file))
 
     return MongoTop(top, waiter)
@@ -55,6 +63,7 @@ async def write_top(
     if isinstance(out_file, str):
         out_file = Path(out_file)
 
+    print(f"HERE:       {out_file}")
     with open(out_file, 'w') as f:
         json.dump([], f)
 
@@ -101,9 +110,8 @@ def flush(new_data: List[Dict[str, Any]], target: Union[str, Path]):
 
 
 async def test_top():
-    top = await mongo_top('out.json')
-    await aio.sleep(5)
-    await top.stop()
+    async with await mongo_top('out.json'):
+        await aio.sleep(5)
 
 
 if __name__ == '__main__':

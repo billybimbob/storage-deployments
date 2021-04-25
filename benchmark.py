@@ -11,17 +11,22 @@ import json
 import os
 
 from pymongo import MongoClient
-from database import Database, STORAGE_FOLDER, is_selfhost, run_ssh, write_results
+from database import Database, is_selfhost, run_ssh, write_results
 
+from deployment.mongodb.start import Cluster
 from monitor_and_graphs.mongotop import mongo_top
 from load_generation.mongodb_load_gen import (
     Command, Operation, KEY, LOAD_SIZES, generate, operation_json)
 
 
 
-GEN_PATH = Path(os.path.realpath(__file__)).parents[0] / 'load_generation'
+STORAGE = Path(os.path.realpath(__file__)).parents[0]
+
+CLUSTER = STORAGE / 'deployment' / 'mongodb' / 'cluster.json'
+TOP_FILES = STORAGE / 'monitor_and_graphs' / 'mongotops'
+
+GEN_PATH = STORAGE / 'load_generation'
 TIMESTAMP = GEN_PATH / 'mongo-timestamps.log' 
-TOP_FILES = GEN_PATH / 'mongotops'
 
 class Remote(NamedTuple):
     user: str
@@ -58,6 +63,7 @@ def mongo_bench(port: int, op: Operation, size: int):
     run_col = 'test-col1'
 
     with MongoClient(port=port) as cli:
+
         admin = cli['admin']
 
         if op == 'write':
@@ -90,47 +96,63 @@ def mongo_bench(port: int, op: Operation, size: int):
             db.drop_collection(run_col)
 
 
-async def benchmarks(database: Database, port: int):
-    TIMESTAMP.touch()
-    # with open(TIMESTAMP, 'w+'):
-        # connect to primary data node, should pass in cluster
-        # monitor = admin.command("getFreeMonitoringStatus")
-        # f.write(f'monitoring state: {monitor}')
-        # pass
+async def redis_bench_combos(port: int):
+    for op in cast(List[Operation], ['write', 'read', 'meta']):
+        for size in LOAD_SIZES:
+            await redis_bench(port, op, size)
 
-    if database == 'mongodb':
-        generate(overwrite=False)
+
+
+async def mongo_bench_combos(port: int):
+    TIMESTAMP.touch()
+    generate(overwrite=False)
+
+    cluster = Cluster.from_json(CLUSTER)
+    shards = cluster.shards
+    data1 = shards.members[0]
+
+    with MongoClient(data1, shards.port) as cli:
+        # connect to primary data node, should pass in cluster
+        monitor = cli['admin'].command('getFreeMonitoringStatus')
+        print(f"{monitor=}")
+
 
     for op in cast(List[Operation], ['write', 'read', 'meta']):
         for size in LOAD_SIZES:
 
+            TOP_FILES.mkdir(parents=True, exist_ok=True)
             top_run = TOP_FILES / f'top-{op}{size}.json'
-            top = await mongo_top(top_run)
 
-            if database == 'redis':
-                await redis_bench(port, op, size)
-
-            elif database == 'mongodb':
+            async with await mongo_top(top_run, data1, shards.port):
                 mongo_bench(port, op, size)
 
-            await top.stop()
+
+
+async def benchmarks(database: Database, port: int):
+
+    if database == 'redis':
+        await redis_bench_combos(port)
+        
+    elif database == 'mongodb':
+        await mongo_bench_combos(port)
+    
+    else:
+        raise ValueError('cluster is missing')
 
 
 
 async def remote_bench(
-    ssh: Optional[Remote], database: Database, port: int):
+    ssh: Optional[Remote],
+    database: Database,
+    port: int):
 
-    if not ssh:
+    if ssh is None or is_selfhost(ssh.address):
         await benchmarks(database, port)
         return
 
-    if is_selfhost(ssh.address):
-        await benchmarks(database, port)
-        return
-
-    bench = STORAGE_FOLDER / 'benchmark.py'
+    bench = STORAGE / 'benchmark.py'
     res = await run_ssh(
-        f'./{bench} -p {port} -d {database}',
+        f'python3 {bench} -p {port} -d {database}',
         ssh.user, ssh.address)
 
     write_results(res)
