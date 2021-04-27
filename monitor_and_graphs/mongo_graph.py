@@ -117,17 +117,17 @@ def get_polls(mongo_top: List[Timestamp]) -> Dict[datetime, Poll]:
 
 
 
-def get_runtimes(file: Union[str, Path]) -> Optional[Dict[str, Runtime]]:
+def get_runtime_tuples(file: Union[str, Path]):
     if isinstance(file, str):
         file = Path(file)
 
     if file.is_dir():
-        data: Dict[str, Runtime] = {}
-        for f in file.iterdir():
-            new_data = get_runtimes(f)
+        data: List[Tuple[str, Runtime]] = []
 
+        for f in file.iterdir():
+            new_data = get_runtime_tuples(f)
             if new_data:
-                data.update(new_data)
+                data.extend(new_data)
 
         return data
 
@@ -157,7 +157,19 @@ def get_runtimes(file: Union[str, Path]) -> Optional[Dict[str, Runtime]]:
         end = str(end),
         ops = ops)
 
-    return { RunParams.file_key(file): run }
+    return [ (RunParams.file_key(file), run) ]
+
+
+
+def get_runtimes(file: Union[str, Path, None]):
+    if file is None:
+        raise ValueError('file is none')
+
+    runtimes = get_runtime_tuples(file)
+    if runtimes:
+        return dict(sorted(runtimes, key=lambda t: t[1]['start']))
+    else:
+        return None
 
 
 
@@ -312,9 +324,9 @@ if __name__ == '__main__':
 
     GRAPHS.mkdir(exist_ok=True, parents=True)
 
-    # runtimes = get_runtimes(args.directory)
-    # if runtimes:
-    #     write_runtimes(runtimes, args.runfile)
+    runtimes = get_runtimes(args.directory)
+    if runtimes:
+        write_runtimes(runtimes, args.runfile)
 
     # if runtimes:
-    graph_runtimes(args.runfile)
+    # graph_runtimes(args.runfile)
